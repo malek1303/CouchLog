@@ -1,0 +1,224 @@
+@import "tailwindcss";
+
+/* ── Design Tokens ─────────────────────────────────────────── */
+:root {
+  --font-inter: 'Inter', sans-serif;
+
+  /* Brand palette */
+  --color-brand: 250 84% 65%;          /* vibrant indigo-purple */
+  --color-brand-dim: 250 84% 55%;
+  --color-accent: 330 85% 65%;         /* pink accent */
+
+  /* Surface hierarchy */
+  --color-bg: 224 15% 7%;
+  --color-surface: 224 13% 11%;
+  --color-surface-2: 224 12% 15%;
+  --color-surface-3: 224 10% 20%;
+  --color-border: 224 10% 22%;
+
+  /* Text */
+  --color-text: 220 14% 96%;
+  --color-text-muted: 220 10% 55%;
+  --color-text-subtle: 220 10% 38%;
+
+  /* Status colors */
+  --color-success: 142 76% 46%;
+  --color-warning: 38 95% 62%;
+  --color-error: 0 84% 62%;
+  --color-info: 199 89% 56%;
+
+  /* Shadows */
+  --shadow-card: 0 4px 24px hsl(224 15% 4% / 0.6);
+  --shadow-glow: 0 0 40px hsl(var(--color-brand) / 0.15);
+}
+
+/* ── Reset & Base ───────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  color-scheme: dark;
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-inter), system-ui, sans-serif;
+  background-color: hsl(var(--color-bg));
+  color: hsl(var(--color-text));
+  min-height: 100vh;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Scrollbar ──────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: hsl(var(--color-surface)); }
+::-webkit-scrollbar-thumb { background: hsl(var(--color-border)); border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: hsl(var(--color-text-subtle)); }
+
+/* ── Tailwind Layer Base ────────────────────────────────────── */
+@layer base {
+  h1, h2, h3, h4, h5, h6 {
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+  }
+  h1 { font-size: clamp(1.75rem, 4vw, 2.5rem); }
+  h2 { font-size: clamp(1.35rem, 3vw, 1.875rem); }
+  h3 { font-size: clamp(1.1rem, 2vw, 1.375rem); }
+
+  a {
+    color: hsl(var(--color-brand));
+    text-decoration: none;
+    transition: color 0.15s;
+  }
+  a:hover { color: hsl(var(--color-accent)); }
+
+  input, textarea, select {
+    background: hsl(var(--color-surface-2));
+    border: 1px solid hsl(var(--color-border));
+    border-radius: 0.5rem;
+    color: hsl(var(--color-text));
+    font-family: inherit;
+    font-size: 0.9375rem;
+    padding: 0.625rem 0.875rem;
+    width: 100%;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    outline: none;
+  }
+  input:focus, textarea:focus, select:focus {
+    border-color: hsl(var(--color-brand));
+    box-shadow: 0 0 0 3px hsl(var(--color-brand) / 0.18);
+  }
+  input::placeholder { color: hsl(var(--color-text-subtle)); }
+}
+
+/* ── Utility Classes ────────────────────────────────────────── */
+@layer utilities {
+  .glass {
+    background: hsl(var(--color-surface) / 0.7);
+    backdrop-filter: blur(16px) saturate(1.4);
+    -webkit-backdrop-filter: blur(16px) saturate(1.4);
+    border: 1px solid hsl(var(--color-border) / 0.6);
+  }
+
+  .card {
+    background: hsl(var(--color-surface));
+    border: 1px solid hsl(var(--color-border));
+    border-radius: 1rem;
+    box-shadow: var(--shadow-card);
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+  .card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-card), var(--shadow-glow);
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.625rem 1.25rem;
+    border-radius: 0.5rem;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+    border: none;
+    outline: none;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+
+  .btn-primary {
+    background: hsl(var(--color-brand));
+    color: #fff;
+  }
+  .btn-primary:hover {
+    background: hsl(var(--color-brand-dim));
+    transform: translateY(-1px);
+    box-shadow: 0 4px 16px hsl(var(--color-brand) / 0.4);
+    color: #fff;
+  }
+  .btn-primary:active { transform: translateY(0); }
+
+  .btn-ghost {
+    background: transparent;
+    color: hsl(var(--color-text-muted));
+    border: 1px solid hsl(var(--color-border));
+  }
+  .btn-ghost:hover {
+    background: hsl(var(--color-surface-2));
+    color: hsl(var(--color-text));
+    border-color: hsl(var(--color-brand) / 0.4);
+  }
+
+  .btn-danger {
+    background: hsl(var(--color-error) / 0.15);
+    color: hsl(var(--color-error));
+    border: 1px solid hsl(var(--color-error) / 0.3);
+  }
+  .btn-danger:hover { background: hsl(var(--color-error) / 0.25); }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.2em 0.65em;
+    border-radius: 99px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+  }
+
+  .badge-to-watch   { background: hsl(var(--color-info) / 0.15);    color: hsl(var(--color-info)); }
+  .badge-watching   { background: hsl(var(--color-brand) / 0.18);   color: hsl(var(--color-brand)); }
+  .badge-completed  { background: hsl(var(--color-success) / 0.15); color: hsl(var(--color-success)); }
+  .badge-dropped    { background: hsl(var(--color-error) / 0.12);   color: hsl(var(--color-error)); }
+
+  .text-muted  { color: hsl(var(--color-text-muted)); }
+  .text-subtle { color: hsl(var(--color-text-subtle)); }
+  .text-brand  { color: hsl(var(--color-brand)); }
+  .text-accent { color: hsl(var(--color-accent)); }
+
+  .divider {
+    height: 1px;
+    background: hsl(var(--color-border));
+    margin: 1.5rem 0;
+  }
+
+  .animate-fade-in {
+    animation: fadeIn 0.3s ease-out forwards;
+  }
+  .animate-slide-up {
+    animation: slideUp 0.35s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+  @keyframes slideUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+}
+
+/* ── Poster Skeleton ────────────────────────────────────────── */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    hsl(var(--color-surface-2)) 25%,
+    hsl(var(--color-surface-3)) 50%,
+    hsl(var(--color-surface-2)) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 0.5rem;
+}
+@keyframes shimmer {
+  from { background-position: 200% 0; }
+  to   { background-position: -200% 0; }
+}

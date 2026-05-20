@@ -1,0 +1,34 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { createServiceClient } from '@/lib/supabase/server';
+
+/**
+ * POST /api/media/upsert
+ * Inserts or updates a media row (uses service role to bypass RLS on media table).
+ * Returns the media UUID for use in watchlist insert.
+ */
+export async function POST(request: NextRequest) {
+  const body = await request.json();
+  const { tmdb_id, media_type, title, poster_path, overview, status } = body;
+
+  if (!tmdb_id || !media_type || !title) {
+    return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+  }
+
+  const supabase = createServiceClient();
+
+  const { data, error } = await supabase
+    .from('media')
+    .upsert(
+      { tmdb_id, media_type, title, poster_path, overview, status },
+      { onConflict: 'tmdb_id,media_type', ignoreDuplicates: false }
+    )
+    .select('id')
+    .single();
+
+  if (error) {
+    console.error('[Media Upsert]', error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  return NextResponse.json({ media_id: data.id });
+}

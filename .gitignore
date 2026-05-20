@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+.npm
+
+# Build outputs
+.next/
+out/
+dist/
+
+# Environment variables — NEVER commit these
+.env
+.env.local
+.env.*.local
+.env.production
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor
+.DS_Store
+.vscode/
+*.swp
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
