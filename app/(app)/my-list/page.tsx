@@ -108,6 +108,43 @@ function WatchlistItem({
   const media = item.media!;
   const isTv = media.media_type === 'tv';
 
+  const [showData, setShowData] = useState<TmdbTvDetails | null>(null);
+  const [progress, setProgress] = useState<Record<string, EpisodeProgress>>({});
+  const [loadingTv, setLoadingTv] = useState(isTv);
+  const supabase = createClient();
+
+  useEffect(() => {
+    if (!isTv) return;
+    async function load() {
+      const [showRes, { data: { user } }] = await Promise.all([
+        fetch(`/api/tmdb/media/tv/${media.tmdb_id}`),
+        supabase.auth.getUser(),
+      ]);
+      const show: TmdbTvDetails = await showRes.json();
+      setShowData(show);
+
+      if (user) {
+        const { data } = await supabase
+          .from('episode_progress')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('media_id', media.id);
+        const map: Record<string, EpisodeProgress> = {};
+        data?.forEach((ep) => {
+          map[`${ep.season_number}-${ep.episode_number}`] = ep;
+        });
+        setProgress(map);
+      }
+      setLoadingTv(false);
+    }
+    load();
+  }, [media.id, media.tmdb_id, isTv, supabase]);
+
+  // Calculate overall show progress stats
+  const totalEpisodes = showData?.number_of_episodes || 0;
+  const totalWatched = Object.values(progress).filter((ep) => ep.watched).length;
+  const overallPercentage = totalEpisodes > 0 ? Math.round((totalWatched / totalEpisodes) * 100) : 0;
+
   return (
     <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
       {/* Header row */}
@@ -140,12 +177,43 @@ function WatchlistItem({
           <div className="flex items-start justify-between gap-2">
             <div>
               <p className="font-semibold leading-tight truncate">{media.title}</p>
-              <span className="badge mt-1" style={{
-                background: isTv ? 'hsl(var(--color-brand) / 0.15)' : 'hsl(var(--color-accent) / 0.15)',
-                color: isTv ? 'hsl(var(--color-brand))' : 'hsl(var(--color-accent))',
-              }}>
-                {isTv ? 'TV' : 'Movie'}
-              </span>
+              <div className="flex items-center gap-2 mt-1 flex-wrap">
+                <span className="badge" style={{
+                  background: isTv ? 'hsl(var(--color-brand) / 0.15)' : 'hsl(var(--color-accent) / 0.15)',
+                  color: isTv ? 'hsl(var(--color-brand))' : 'hsl(var(--color-accent))',
+                }}>
+                  {isTv ? 'TV' : 'Movie'}
+                </span>
+                
+                {/* Overall Show Progress in Card Header */}
+                {isTv && !loadingTv && showData && (
+                  <div className="flex items-center gap-1.5" style={{ display: 'inline-flex' }} onClick={(e) => e.stopPropagation()}>
+                    <div style={{
+                      width: 80,
+                      height: 5,
+                      background: 'hsl(var(--color-surface-3))',
+                      borderRadius: 99,
+                      overflow: 'hidden',
+                      position: 'relative',
+                      border: '1px solid hsl(var(--color-border) / 0.3)'
+                    }}>
+                      <div style={{
+                        width: `${overallPercentage}%`,
+                        height: '100%',
+                        background: 'linear-gradient(90deg, hsl(var(--color-brand)) 0%, hsl(var(--color-accent)) 100%)',
+                        borderRadius: 99,
+                        transition: 'width 0.4s cubic-bezier(0.4, 0, 0.2, 1)'
+                      }} />
+                    </div>
+                    <span className="text-[10px] font-bold text-subtle">
+                      {overallPercentage}% ({totalWatched}/{totalEpisodes})
+                    </span>
+                  </div>
+                )}
+                {isTv && loadingTv && (
+                  <div className="skeleton" style={{ height: 10, width: 120 }} />
+                )}
+              </div>
             </div>
 
             {/* Actions */}
@@ -186,7 +254,7 @@ function WatchlistItem({
                 e.stopPropagation();
                 setExpanded(!expanded);
               }}
-              className="flex items-center gap-1 text-xs mt-2 transition-all"
+              className="flex items-center gap-1 text-xs mt-2.5 transition-all"
               style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'hsl(var(--color-text-muted))', padding: 0 }}
             >
               {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
@@ -204,8 +272,14 @@ function WatchlistItem({
       </div>
 
       {/* Episode list for TV */}
-      {isTv && expanded && (
-        <EpisodeList mediaId={media.id} tmdbId={media.tmdb_id} />
+      {isTv && expanded && showData && (
+        <EpisodeList
+          mediaId={media.id}
+          tmdbId={media.tmdb_id}
+          showData={showData}
+          progress={progress}
+          setProgress={setProgress}
+        />
       )}
     </div>
   );
@@ -338,37 +412,22 @@ function MovieProgressRow({ mediaId }: { mediaId: string }) {
 }
 
 // ── EpisodeList ────────────────────────────────────────────────
-function EpisodeList({ mediaId, tmdbId }: { mediaId: string; tmdbId: number }) {
-  const [showData, setShowData] = useState<TmdbTvDetails | null>(null);
+function EpisodeList({
+  mediaId,
+  tmdbId,
+  showData,
+  progress,
+  setProgress,
+}: {
+  mediaId: string;
+  tmdbId: number;
+  showData: TmdbTvDetails;
+  progress: Record<string, EpisodeProgress>;
+  setProgress: React.Dispatch<React.SetStateAction<Record<string, EpisodeProgress>>>;
+}) {
   const [openSeason, setOpenSeason] = useState<number | null>(null);
   const [episodeData, setEpisodeData] = useState<Record<number, TmdbEpisode[]>>({});
-  const [progress, setProgress] = useState<Record<string, EpisodeProgress>>({});
-  const [loading, setLoading] = useState(true);
   const supabase = createClient();
-
-  useEffect(() => {
-    async function load() {
-      const [showRes, { data: { user } }] = await Promise.all([
-        fetch(`/api/tmdb/media/tv/${tmdbId}`),
-        supabase.auth.getUser(),
-      ]);
-      const show: TmdbTvDetails = await showRes.json();
-      setShowData(show);
-
-      if (user) {
-        const { data } = await supabase
-          .from('episode_progress')
-          .select('*')
-          .eq('user_id', user.id)
-          .eq('media_id', mediaId);
-        const map: Record<string, EpisodeProgress> = {};
-        data?.forEach((ep) => { map[`${ep.season_number}-${ep.episode_number}`] = ep; });
-        setProgress(map);
-      }
-      setLoading(false);
-    }
-    load();
-  }, [mediaId, tmdbId, supabase]);
 
   async function loadSeasonEpisodes(seasonNum: number) {
     if (episodeData[seasonNum]) return;
@@ -398,9 +457,6 @@ function EpisodeList({ mediaId, tmdbId }: { mediaId: string; tmdbId: number }) {
     setProgress((prev) => ({ ...prev, [key]: data }));
   }
 
-  if (loading) return <div className="p-4"><div className="skeleton" style={{ height: 80 }} /></div>;
-  if (!showData) return null;
-
   const realSeasons = showData.seasons.filter((s) => s.season_number > 0);
 
   return (
@@ -409,12 +465,10 @@ function EpisodeList({ mediaId, tmdbId }: { mediaId: string; tmdbId: number }) {
         const isOpen = openSeason === season.season_number;
         const eps = episodeData[season.season_number] ?? [];
         
-        // Calculate watched count directly from Supabase progress state (works pre-loading!)
-        const totalEpisodes = season.episode_count || 1;
         const watchedCount = Object.values(progress).filter(
           (ep) => ep.season_number === season.season_number && ep.watched
         ).length;
-        const percentage = Math.round((watchedCount / totalEpisodes) * 100);
+        const percentage = season.episode_count ? Math.round((watchedCount / season.episode_count) * 100) : 0;
 
         return (
           <div key={season.season_number} style={{ borderBottom: '1px solid hsl(var(--color-border) / 0.5)' }}>
