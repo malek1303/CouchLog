@@ -111,7 +111,12 @@ function WatchlistItem({
   return (
     <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
       {/* Header row */}
-      <div className="flex gap-4 p-4">
+      <div
+        className={`flex gap-4 p-4 transition-colors ${isTv ? 'cursor-pointer hover:bg-white/[0.02]' : ''}`}
+        onClick={() => {
+          if (isTv) setExpanded(!expanded);
+        }}
+      >
         {/* Poster thumbnail */}
         <div className="relative flex-shrink-0" style={{ width: 56, height: 84, borderRadius: '0.5rem', overflow: 'hidden' }}>
           {media.poster_path ? (
@@ -144,7 +149,7 @@ function WatchlistItem({
             </div>
 
             {/* Actions */}
-            <div className="flex items-center gap-2 flex-shrink-0">
+            <div className="flex items-center gap-2 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
               <StatusDropdown status={item.status} onChange={(s) => onStatusChange(item.id, s)} />
               <div className="relative">
                 <button
@@ -177,7 +182,10 @@ function WatchlistItem({
           {/* Expand button for TV */}
           {isTv && (
             <button
-              onClick={() => setExpanded(!expanded)}
+              onClick={(e) => {
+                e.stopPropagation();
+                setExpanded(!expanded);
+              }}
               className="flex items-center gap-1 text-xs mt-2 transition-all"
               style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'hsl(var(--color-text-muted))', padding: 0 }}
             >
@@ -188,7 +196,9 @@ function WatchlistItem({
 
           {/* Movie progress */}
           {!isTv && (
-            <MovieProgressRow mediaId={media.id} />
+            <div onClick={(e) => e.stopPropagation()}>
+              <MovieProgressRow mediaId={media.id} />
+            </div>
           )}
         </div>
       </div>
