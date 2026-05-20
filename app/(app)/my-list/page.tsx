@@ -408,7 +408,13 @@ function EpisodeList({ mediaId, tmdbId }: { mediaId: string; tmdbId: number }) {
       {realSeasons.map((season) => {
         const isOpen = openSeason === season.season_number;
         const eps = episodeData[season.season_number] ?? [];
-        const watchedCount = eps.filter((ep) => progress[`${season.season_number}-${ep.episode_number}`]?.watched).length;
+        
+        // Calculate watched count directly from Supabase progress state (works pre-loading!)
+        const totalEpisodes = season.episode_count || 1;
+        const watchedCount = Object.values(progress).filter(
+          (ep) => ep.season_number === season.season_number && ep.watched
+        ).length;
+        const percentage = Math.round((watchedCount / totalEpisodes) * 100);
 
         return (
           <div key={season.season_number} style={{ borderBottom: '1px solid hsl(var(--color-border) / 0.5)' }}>
@@ -417,16 +423,35 @@ function EpisodeList({ mediaId, tmdbId }: { mediaId: string; tmdbId: number }) {
                 if (!isOpen) await loadSeasonEpisodes(season.season_number);
                 setOpenSeason(isOpen ? null : season.season_number);
               }}
-              className="w-full flex items-center justify-between px-4 py-3 text-sm transition-all"
+              className="w-full flex items-center justify-between px-4 py-3 text-sm transition-all hover:bg-white/[0.02]"
               style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'hsl(var(--color-text))' }}
             >
-              <span className="font-medium">{season.name}</span>
+              <div className="flex flex-col items-start gap-1">
+                <span className="font-medium">{season.name}</span>
+                <div className="flex items-center gap-2 mt-1">
+                  <div style={{
+                    width: 100,
+                    height: 6,
+                    background: 'hsl(var(--color-surface-3))',
+                    borderRadius: 99,
+                    overflow: 'hidden',
+                    position: 'relative'
+                  }}>
+                    <div style={{
+                      width: `${percentage}%`,
+                      height: '100%',
+                      background: 'linear-gradient(90deg, hsl(var(--color-brand)) 0%, hsl(var(--color-accent)) 100%)',
+                      borderRadius: 99,
+                      transition: 'width 0.35s cubic-bezier(0.4, 0, 0.2, 1)'
+                    }} />
+                  </div>
+                  <span className="text-[10px] font-bold text-subtle" style={{ minWidth: 28, textAlign: 'left' }}>{percentage}%</span>
+                </div>
+              </div>
               <div className="flex items-center gap-3">
-                {eps.length > 0 && (
-                  <span className="text-xs" style={{ color: 'hsl(var(--color-text-muted))' }}>
-                    {watchedCount}/{eps.length}
-                  </span>
-                )}
+                <span className="text-xs" style={{ color: 'hsl(var(--color-text-muted))' }}>
+                  {watchedCount}/{season.episode_count} ep{season.episode_count !== 1 ? 's' : ''}
+                </span>
                 {isOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
               </div>
             </button>
