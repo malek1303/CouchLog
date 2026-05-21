@@ -9,7 +9,7 @@
   --color-brand-dim: 250 84% 55%;
   --color-accent: 330 85% 65%;         /* pink accent */
 
-  /* Surface hierarchy */
+  /* Surface hierarchy (Dark Mode - Default) */
   --color-bg: 224 15% 7%;
   --color-surface: 224 13% 11%;
   --color-surface-2: 224 12% 15%;
@@ -30,6 +30,41 @@
   /* Shadows */
   --shadow-card: 0 4px 24px hsl(224 15% 4% / 0.6);
   --shadow-glow: 0 0 40px hsl(var(--color-brand) / 0.15);
+}
+
+/* Curated Light Mode theme override */
+html.light {
+  color-scheme: light;
+  --color-bg: 220 20% 97%;          /* Warm off-white */
+  --color-surface: 0 0% 100%;        /* Pure white */
+  --color-surface-2: 220 20% 94%;    /* Soft gray-blue */
+  --color-surface-3: 220 20% 88%;    /* Slightly darker gray-blue */
+  --color-border: 220 15% 89%;       /* Clean light border */
+  --color-text: 224 15% 12%;         /* Elegant dark slate */
+  --color-text-muted: 220 10% 45%;   /* Muted slate */
+  --color-text-subtle: 220 10% 60%;  /* Subtle placeholder gray */
+  --shadow-card: 0 8px 30px rgba(0, 0, 0, 0.04);
+}
+
+/* Global Transition for buttery smooth theme changes */
+html,
+body,
+aside,
+header,
+input,
+textarea,
+select,
+.card,
+.btn,
+.divider,
+svg,
+span,
+p,
+a {
+  transition: background-color 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+              border-color 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+              color 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+              box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* ── Reset & Base ───────────────────────────────────────────── */

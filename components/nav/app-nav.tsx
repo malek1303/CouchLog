@@ -8,6 +8,7 @@ import {
   Search, List, PlayCircle, Bell, Tv, LogOut, Menu, X
 } from 'lucide-react';
 import NotificationBell from '@/components/notifications/notification-bell';
+import ThemeToggle from '@/components/nav/theme-toggle';
 
 const NAV_ITEMS = [
   { href: '/search',        label: 'Search',      icon: Search },
@@ -40,16 +41,20 @@ export default function AppNav({ userEmail }: AppNavProps) {
         className="hidden lg:flex flex-col fixed left-0 top-0 h-full w-60 z-40 glass"
         style={{ borderRight: '1px solid hsl(var(--color-border))', padding: '1.5rem 1rem' }}
       >
-        {/* Logo */}
-        <Link href="/search" className="flex items-center gap-2.5 mb-8 px-2 group">
-          <div
-            className="flex items-center justify-center w-9 h-9 rounded-xl transition-all"
-            style={{ background: 'hsl(var(--color-brand) / 0.15)', border: '1px solid hsl(var(--color-brand) / 0.3)' }}
-          >
-            <Tv size={18} style={{ color: 'hsl(var(--color-brand))' }} />
-          </div>
-          <span className="text-lg font-bold" style={{ letterSpacing: '-0.02em' }}>CouchLog</span>
-        </Link>
+        {/* Sidebar Header */}
+        <div className="flex items-center justify-between mb-8 px-2">
+          {/* Logo */}
+          <Link href="/search" className="flex items-center gap-2.5 group">
+            <div
+              className="flex items-center justify-center w-9 h-9 rounded-xl transition-all"
+              style={{ background: 'hsl(var(--color-brand) / 0.15)', border: '1px solid hsl(var(--color-brand) / 0.3)' }}
+            >
+              <Tv size={18} style={{ color: 'hsl(var(--color-brand))' }} />
+            </div>
+            <span className="text-lg font-bold" style={{ letterSpacing: '-0.02em' }}>CouchLog</span>
+          </Link>
+          <ThemeToggle />
+        </div>
 
         {/* Navigation */}
         <nav className="flex-1 space-y-1">
@@ -120,8 +125,9 @@ export default function AppNav({ userEmail }: AppNavProps) {
           <Tv size={20} style={{ color: 'hsl(var(--color-brand))' }} />
           <span className="font-bold">CouchLog</span>
         </Link>
-        <div className="flex items-center gap-2">
-          <Link href="/notifications" aria-label="Notifications">
+        <div className="flex items-center gap-3">
+          <ThemeToggle />
+          <Link href="/notifications" aria-label="Notifications" className="flex items-center justify-center">
             <NotificationBell compact />
           </Link>
           <button
