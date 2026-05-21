@@ -236,6 +236,72 @@ function InProgressCard({ item, onProgressUpdate, onMarkCompleted }: InProgressC
     load();
   }, [media.id, media.tmdb_id, isTv, supabase]);
 
+  // Sync computed "Next up" and "Paused" state from progress to the watchlist table in the DB
+  useEffect(() => {
+    if (!isTv || loadingTv || !showData) return;
+
+    let activeSeason = item.current_season;
+    let activeEpisode = item.current_episode;
+    let activeTimestamp: string | null = null;
+
+    let foundPaused = false;
+    const realSeasons = showData.seasons
+      .filter((s) => s.season_number > 0)
+      .sort((a, b) => a.season_number - b.season_number);
+
+    // 1. First, search for any episode that is NOT watched and HAS a stopped_at_timestamp set (mid-episode)
+    for (const season of realSeasons) {
+      for (let epNum = 1; epNum <= season.episode_count; epNum++) {
+        const key = `${season.season_number}-${epNum}`;
+        const epProgress = progress[key];
+        if (epProgress && !epProgress.watched && epProgress.stopped_at_timestamp) {
+          activeSeason = season.season_number;
+          activeEpisode = epNum;
+          activeTimestamp = epProgress.stopped_at_timestamp;
+          foundPaused = true;
+          break;
+        }
+      }
+      if (foundPaused) break;
+    }
+
+    // 2. If no paused episode found, find the first unwatched episode in order
+    if (!foundPaused) {
+      let foundUnwatched = false;
+      for (const season of realSeasons) {
+        for (let epNum = 1; epNum <= season.episode_count; epNum++) {
+          const key = `${season.season_number}-${epNum}`;
+          const epProgress = progress[key];
+          if (!epProgress || !epProgress.watched) {
+            activeSeason = season.season_number;
+            activeEpisode = epNum;
+            activeTimestamp = null;
+            foundUnwatched = true;
+            break;
+          }
+        }
+        if (foundUnwatched) break;
+      }
+
+      // 3. If all episodes are watched, default to the last episode of the last season
+      if (!foundUnwatched && realSeasons.length > 0) {
+        const lastSeason = realSeasons[realSeasons.length - 1];
+        activeSeason = lastSeason.season_number;
+        activeEpisode = lastSeason.episode_count;
+        activeTimestamp = null;
+      }
+    }
+
+    // Only update if the computed next/paused episode differs from the current item's state
+    if (
+      activeSeason !== item.current_season ||
+      activeEpisode !== item.current_episode ||
+      activeTimestamp !== item.last_timestamp
+    ) {
+      onProgressUpdate(item, activeSeason, activeEpisode, activeTimestamp || '');
+    }
+  }, [progress, showData, loadingTv, isTv, item, onProgressUpdate]);
+
   // Calculate overall show progress stats
   const totalEpisodes = showData?.number_of_episodes || 0;
   const totalWatched = Object.values(progress).filter((ep) => ep.watched).length;
@@ -277,28 +343,44 @@ function InProgressCard({ item, onProgressUpdate, onMarkCompleted }: InProgressC
                   <span 
                     className="badge flex items-center gap-1 font-bold text-[11px]" 
                     style={{
-                      background: isTv ? 'hsl(var(--color-brand) / 0.12)' : 'hsl(var(--color-accent) / 0.12)',
-                      color: isTv ? 'hsl(var(--color-brand))' : 'hsl(var(--color-accent))',
-                      border: `1px solid ${isTv ? 'hsl(var(--color-brand) / 0.2)' : 'hsl(var(--color-accent) / 0.2)'}`
+                      background: !isTv 
+                        ? 'hsl(var(--color-accent) / 0.12)' 
+                        : item.last_timestamp 
+                          ? 'hsl(var(--color-accent) / 0.12)' 
+                          : 'hsl(var(--color-brand) / 0.12)',
+                      color: !isTv 
+                        ? 'hsl(var(--color-accent))' 
+                        : item.last_timestamp 
+                          ? 'hsl(var(--color-accent))' 
+                          : 'hsl(var(--color-brand))',
+                      border: `1px solid ${
+                        !isTv 
+                          ? 'hsl(var(--color-accent) / 0.2)' 
+                          : item.last_timestamp 
+                            ? 'hsl(var(--color-accent) / 0.2)' 
+                            : 'hsl(var(--color-brand) / 0.2)'
+                      }`
                     }}
                   >
-                    {isTv ? `Season ${item.current_season}: Episode ${item.current_episode}` : 'Movie'}
-                  </span>
+                    {isTv && item.last_timestamp && <Clock size={11} className="mr-0.5 animate-pulse" />}
+                    {(() => {
+                      if (!isTv) return 'Movie';
+                      
+                      const allWatched = showData && !loadingTv && 
+                        Object.values(progress).filter((ep) => ep.watched).length === totalEpisodes && 
+                        totalEpisodes > 0;
 
-                  {/* Mid-Episode Timestamp */}
-                  {item.last_timestamp && (
-                    <div
-                      className="badge flex items-center gap-1 font-bold text-[11px]"
-                      style={{ 
-                        background: 'hsl(var(--color-accent) / 0.1)', 
-                        color: 'hsl(var(--color-accent))',
-                        border: '1px solid hsl(var(--color-accent) / 0.2)'
-                      }}
-                    >
-                      <Clock size={11} />
-                      Paused at {item.last_timestamp}
-                    </div>
-                  )}
+                      if (allWatched) {
+                        return 'All Caught Up! 🎉';
+                      }
+
+                      if (item.last_timestamp) {
+                        return `Paused: Season ${item.current_season}: Episode ${item.current_episode} at ${item.last_timestamp}`;
+                      }
+
+                      return `Next up : Season ${item.current_season}: Episode ${item.current_episode}`;
+                    })()}
+                  </span>
 
                   {/* TV Overall Progress Bar in Card Header */}
                   {isTv && !loadingTv && showData && (
