@@ -87,7 +87,7 @@ export default function TimestampModal({
     setSaving(false);
   }
 
-  return (
+  return mounted ? createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ background: 'hsl(224 15% 4% / 0.75)', backdropFilter: 'blur(6px)' }}
