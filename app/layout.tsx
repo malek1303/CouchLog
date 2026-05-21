@@ -10,6 +10,9 @@ export const metadata: Metadata = {
   description:
     'CouchLog lets you manage your movie and TV show watchlists, track exactly where you paused, and get notified when new episodes drop.',
   keywords: ['watchlist', 'tv tracker', 'movie tracker', 'episode progress'],
+  icons: {
+    icon: '/icon.svg',
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
