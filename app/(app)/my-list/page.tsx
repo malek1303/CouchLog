@@ -107,7 +107,7 @@ function WatchlistItem({
   }
 
   return (
-    <div className="card flex gap-4 p-4 animate-slide-up relative overflow-hidden group">
+    <div className="card flex gap-4 p-4 animate-slide-up relative group">
       {/* Poster thumbnail */}
       <div className="relative flex-shrink-0" style={{ width: 56, height: 84, borderRadius: '0.5rem', overflow: 'hidden' }}>
         {media.poster_path ? (
@@ -159,8 +159,13 @@ function WatchlistItem({
               </button>
               {showMenu && (
                 <div
-                  className="absolute right-0 top-full mt-1 z-10 rounded-xl overflow-hidden"
-                  style={{ background: 'hsl(var(--color-surface-2))', border: '1px solid hsl(var(--color-border))', minWidth: 140 }}
+                  className="absolute right-0 top-full mt-1.5 z-10 rounded-xl overflow-hidden animate-scale-in"
+                  style={{
+                    background: 'hsl(var(--color-surface-2))',
+                    border: '1px solid hsl(var(--color-border))',
+                    minWidth: 140,
+                    boxShadow: 'var(--shadow-card), 0 10px 30px rgba(0, 0, 0, 0.4)'
+                  }}
                 >
                   <button
                     onClick={() => { onRemove(item.id); setShowMenu(false); }}

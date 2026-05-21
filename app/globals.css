@@ -230,6 +230,10 @@ body {
   .animate-slide-up {
     animation: slideUp 0.35s cubic-bezier(0.4, 0, 0.2, 1) forwards;
   }
+  .animate-scale-in {
+    animation: scaleIn 0.15s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    transform-origin: top right;
+  }
 
   @keyframes fadeIn {
     from { opacity: 0; }
@@ -238,6 +242,16 @@ body {
   @keyframes slideUp {
     from { opacity: 0; transform: translateY(16px); }
     to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes scaleIn {
+    from {
+      opacity: 0;
+      transform: scale(0.96) translateY(-4px);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1) translateY(0);
+    }
   }
 }
 
