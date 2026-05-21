@@ -162,6 +162,47 @@ function InProgressCard({ item, onProgressUpdate, onMarkCompleted }: InProgressC
   const [progress, setProgress] = useState<Record<string, EpisodeProgress>>({});
   const [loadingTv, setLoadingTv] = useState(isTv);
   const supabase = createClient();
+  const { toast } = useToast();
+
+  async function handleMarkCompleted() {
+    if (isTv) {
+      const currentSeason = item.current_season;
+      const currentEp = item.current_episode;
+      const key = `${currentSeason}-${currentEp}`;
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // 1. Upsert into episode_progress table as watched
+      const { data: epData, error: epError } = await supabase
+        .from('episode_progress')
+        .upsert({
+          user_id: user.id,
+          media_id: media.id,
+          season_number: currentSeason,
+          episode_number: currentEp,
+          watched: true,
+          watched_at: new Date().toISOString(),
+          stopped_at_timestamp: null,
+        }, { onConflict: 'user_id,media_id,season_number,episode_number' })
+        .select()
+        .single();
+
+      if (epError) {
+        toast({ title: 'Error marking episode watched', description: epError.message, variant: 'destructive' });
+        return;
+      }
+
+      // 2. Update local checklist state so checklists/progress bars update in real time
+      setProgress((prev) => ({ ...prev, [key]: epData }));
+
+      // 3. Advance to the next episode in the watchlist table
+      const nextEp = currentEp + 1;
+      await onProgressUpdate(item, currentSeason, nextEp, '');
+    } else {
+      await onMarkCompleted(item);
+    }
+  }
 
   useEffect(() => {
     if (!isTv) return;
@@ -300,7 +341,7 @@ function InProgressCard({ item, onProgressUpdate, onMarkCompleted }: InProgressC
               Update Progress
             </button>
             <button
-              onClick={() => onMarkCompleted(item)}
+              onClick={handleMarkCompleted}
               className="btn text-xs flex items-center gap-1 hover:scale-[1.02] transition-transform"
               style={{
                 padding: '0.4rem 0.85rem',
