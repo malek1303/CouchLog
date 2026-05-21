@@ -37,12 +37,15 @@ CREATE POLICY "media_update_service"
 
 -- ── 2. WATCHLIST ─────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.watchlist (
-  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id    UUID NOT NULL REFERENCES auth.users ON DELETE CASCADE,
-  media_id   UUID NOT NULL REFERENCES public.media ON DELETE CASCADE,
-  status     TEXT NOT NULL DEFAULT 'to_watch'
-             CHECK (status IN ('to_watch', 'watching', 'completed', 'dropped')),
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id          UUID NOT NULL REFERENCES auth.users ON DELETE CASCADE,
+  media_id         UUID NOT NULL REFERENCES public.media ON DELETE CASCADE,
+  status           TEXT NOT NULL DEFAULT 'to_watch'
+                   CHECK (status IN ('to_watch', 'watching', 'completed', 'dropped')),
+  current_season   INTEGER NOT NULL DEFAULT 1,
+  current_episode  INTEGER NOT NULL DEFAULT 1,
+  last_timestamp   TEXT,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (user_id, media_id)
 );
 

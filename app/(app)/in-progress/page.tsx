@@ -1,90 +1,108 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Image from 'next/image';
-import { Clock, Loader2, CheckCircle2, Film, Tv } from 'lucide-react';
+import { Clock, Loader2, CheckCircle2, Tv, Film } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import { EpisodeProgress, MovieProgress, Media } from '@/lib/types';
+import { Watchlist } from '@/lib/types';
 import { posterUrl } from '@/lib/tmdb';
 import TimestampModal from '@/components/progress/timestamp-modal';
-
-interface InProgressEpisode extends EpisodeProgress {
-  media: Media;
-}
-interface InProgressMovie extends MovieProgress {
-  media: Media;
-}
+import { useToast } from '@/hooks/use-toast';
 
 export default function InProgressPage() {
-  const [episodes, setEpisodes] = useState<InProgressEpisode[]>([]);
-  const [movies, setMovies] = useState<InProgressMovie[]>([]);
+  const [items, setItems] = useState<Watchlist[]>([]);
   const [loading, setLoading] = useState(true);
   const supabase = createClient();
+  const { toast } = useToast();
 
-  useEffect(() => {
-    async function load() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+  const loadInProgress = useCallback(async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
 
-      const [epRes, movRes] = await Promise.all([
-        supabase
-          .from('episode_progress')
-          .select('*, media(*)')
-          .eq('user_id', user.id)
-          .eq('watched', false)
-          .not('stopped_at_timestamp', 'is', null)
-          .order('updated_at', { ascending: false }),
-        supabase
-          .from('movie_progress')
-          .select('*, media(*)')
-          .eq('user_id', user.id)
-          .eq('watched', false)
-          .not('stopped_at_timestamp', 'is', null)
-          .order('updated_at', { ascending: false }),
-      ]);
+    const { data } = await supabase
+      .from('watchlist')
+      .select('*, media(*)')
+      .eq('user_id', user.id)
+      .eq('status', 'watching')
+      .order('created_at', { ascending: false });
 
-      setEpisodes((epRes.data as InProgressEpisode[]) ?? []);
-      setMovies((movRes.data as InProgressMovie[]) ?? []);
-      setLoading(false);
-    }
-    load();
+    setItems((data as Watchlist[]) ?? []);
+    setLoading(false);
   }, [supabase]);
 
-  async function markEpisodeWatched(ep: InProgressEpisode) {
-    await supabase
-      .from('episode_progress')
-      .update({ watched: true, watched_at: new Date().toISOString(), stopped_at_timestamp: null })
-      .eq('id', ep.id);
-    setEpisodes((prev) => prev.filter((e) => e.id !== ep.id));
+  useEffect(() => {
+    loadInProgress();
+  }, [loadInProgress]);
+
+  async function updateProgress(item: Watchlist, season: number, episode: number, timestamp: string) {
+    const { error } = await supabase
+      .from('watchlist')
+      .update({
+        current_season: season,
+        current_episode: episode,
+        last_timestamp: timestamp || null,
+      })
+      .eq('id', item.id);
+
+    if (error) {
+      toast({ title: 'Error saving progress', description: error.message, variant: 'destructive' });
+      return;
+    }
+
+    setItems((prev) =>
+      prev.map((i) =>
+        i.id === item.id
+          ? { ...i, current_season: season, current_episode: episode, last_timestamp: timestamp || null }
+          : i
+      )
+    );
+    toast({ title: 'Progress updated!' });
   }
 
-  async function markMovieWatched(mv: InProgressMovie) {
-    await supabase
-      .from('movie_progress')
-      .update({ watched: true, watched_at: new Date().toISOString(), stopped_at_timestamp: null })
-      .eq('id', mv.id);
-    setMovies((prev) => prev.filter((m) => m.id !== mv.id));
-  }
+  async function markCompleted(item: Watchlist) {
+    if (item.media?.media_type === 'tv') {
+      // For TV shows: advance to the next episode and clear timestamp
+      const nextEp = item.current_episode + 1;
+      const { error } = await supabase
+        .from('watchlist')
+        .update({
+          current_episode: nextEp,
+          last_timestamp: null,
+        })
+        .eq('id', item.id);
 
-  async function updateEpisodeTimestamp(ep: InProgressEpisode, ts: string) {
-    await supabase
-      .from('episode_progress')
-      .update({ stopped_at_timestamp: ts || null })
-      .eq('id', ep.id);
-    if (!ts) setEpisodes((prev) => prev.filter((e) => e.id !== ep.id));
-    else setEpisodes((prev) => prev.map((e) => e.id === ep.id ? { ...e, stopped_at_timestamp: ts } : e));
-  }
+      if (error) {
+        toast({ title: 'Error updating episode', description: error.message, variant: 'destructive' });
+        return;
+      }
 
-  async function updateMovieTimestamp(mv: InProgressMovie, ts: string) {
-    await supabase
-      .from('movie_progress')
-      .update({ stopped_at_timestamp: ts || null })
-      .eq('id', mv.id);
-    if (!ts) setMovies((prev) => prev.filter((m) => m.id !== mv.id));
-    else setMovies((prev) => prev.map((m) => m.id === mv.id ? { ...m, stopped_at_timestamp: ts } : m));
-  }
+      setItems((prev) =>
+        prev.map((i) =>
+          i.id === item.id
+            ? { ...i, current_episode: nextEp, last_timestamp: null }
+            : i
+        )
+      );
+      toast({ title: 'Episode marked as watched!', description: `Advanced to S${item.current_season}E${nextEp}.` });
+    } else {
+      // For Movies: mark status as completed and remove from In Progress view
+      const { error } = await supabase
+        .from('watchlist')
+        .update({
+          status: 'completed',
+          last_timestamp: null,
+        })
+        .eq('id', item.id);
 
-  const total = episodes.length + movies.length;
+      if (error) {
+        toast({ title: 'Error saving status', description: error.message, variant: 'destructive' });
+        return;
+      }
+
+      setItems((prev) => prev.filter((i) => i.id !== item.id));
+      toast({ title: 'Movie marked as completed!' });
+    }
+  }
 
   if (loading) {
     return (
@@ -99,41 +117,24 @@ export default function InProgressPage() {
       <div className="mb-8">
         <h1 className="mb-1">In Progress</h1>
         <p className="text-muted">
-          {total === 0 ? 'Nothing paused right now.' : `${total} item${total !== 1 ? 's' : ''} with a saved timestamp.`}
+          {items.length === 0 ? 'Nothing in progress right now.' : `${items.length} show${items.length !== 1 ? 's' : ''} actively being tracked.`}
         </p>
       </div>
 
-      {total === 0 ? (
+      {items.length === 0 ? (
         <div className="text-center py-20">
           <Clock size={48} className="mx-auto mb-4" style={{ color: 'hsl(var(--color-border))' }} />
           <p className="text-muted text-lg">Nothing in progress</p>
-          <p className="text-subtle text-sm mt-1">Set a timestamp on an episode or movie to track where you paused.</p>
+          <p className="text-subtle text-sm mt-1">Start watching a show or movie from Search to track your progress here.</p>
         </div>
       ) : (
         <div className="space-y-4">
-          {episodes.map((ep) => (
+          {items.map((item) => (
             <InProgressCard
-              key={ep.id}
-              title={ep.media.title}
-              posterPath={ep.media.poster_path}
-              mediaType="tv"
-              subtitle={`Season ${ep.season_number}, Episode ${ep.episode_number}`}
-              timestamp={ep.stopped_at_timestamp!}
-              onMarkWatched={() => markEpisodeWatched(ep)}
-              onTimestampUpdate={(ts) => updateEpisodeTimestamp(ep, ts)}
-              timestampLabel={`S${ep.season_number}E${ep.episode_number} — ${ep.media.title}`}
-            />
-          ))}
-          {movies.map((mv) => (
-            <InProgressCard
-              key={mv.id}
-              title={mv.media.title}
-              posterPath={mv.media.poster_path}
-              mediaType="movie"
-              timestamp={mv.stopped_at_timestamp!}
-              onMarkWatched={() => markMovieWatched(mv)}
-              onTimestampUpdate={(ts) => updateMovieTimestamp(mv, ts)}
-              timestampLabel={mv.media.title}
+              key={item.id}
+              item={item}
+              onProgressUpdate={updateProgress}
+              onMarkCompleted={markCompleted}
             />
           ))}
         </div>
@@ -143,89 +144,114 @@ export default function InProgressPage() {
 }
 
 // ── InProgressCard ─────────────────────────────────────────────
-function InProgressCard({
-  title, posterPath, mediaType, subtitle, timestamp,
-  onMarkWatched, onTimestampUpdate, timestampLabel,
-}: {
-  title: string;
-  posterPath: string | null;
-  mediaType: 'tv' | 'movie';
-  subtitle?: string;
-  timestamp: string;
-  onMarkWatched: () => void;
-  onTimestampUpdate: (ts: string) => void | Promise<void>;
-  timestampLabel: string;
-}) {
-  const [showTimestamp, setShowTimestamp] = useState(false);
+interface InProgressCardProps {
+  item: Watchlist;
+  onProgressUpdate: (item: Watchlist, season: number, episode: number, timestamp: string) => void | Promise<void>;
+  onMarkCompleted: (item: Watchlist) => void | Promise<void>;
+}
+
+function InProgressCard({ item, onProgressUpdate, onMarkCompleted }: InProgressCardProps) {
+  const [showTimestampModal, setShowTimestampModal] = useState(false);
+  const media = item.media!;
+  const isTv = media.media_type === 'tv';
 
   return (
-    <div className="card flex gap-4 p-4 animate-slide-up">
+    <div className="card flex gap-4 p-4 animate-slide-up relative overflow-hidden group">
       {/* Poster */}
-      <div className="relative flex-shrink-0" style={{ width: 64, height: 96, borderRadius: '0.5rem', overflow: 'hidden' }}>
-        {posterPath ? (
+      <div className="relative flex-shrink-0" style={{ width: 68, height: 102, borderRadius: '0.625rem', overflow: 'hidden' }}>
+        {media.poster_path ? (
           <Image
-            src={posterUrl(posterPath, 'w185')}
-            alt={title}
+            src={posterUrl(media.poster_path, 'w185')}
+            alt={media.title}
             fill
-            sizes="64px"
-            className="object-cover"
+            sizes="68px"
+            className="object-cover transition-transform duration-300 group-hover:scale-105"
             unoptimized
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center" style={{ background: 'hsl(var(--color-surface-2))' }}>
-            {mediaType === 'tv' ? <Tv size={22} style={{ color: 'hsl(var(--color-border))' }} /> : <Film size={22} style={{ color: 'hsl(var(--color-border))' }} />}
+            {isTv ? <Tv size={22} style={{ color: 'hsl(var(--color-border))' }} /> : <Film size={22} style={{ color: 'hsl(var(--color-border))' }} />}
           </div>
         )}
       </div>
 
       {/* Info */}
-      <div className="flex-1 min-w-0">
-        <p className="font-semibold truncate">{title}</p>
-        {subtitle && <p className="text-sm text-muted mt-0.5">{subtitle}</p>}
+      <div className="flex-1 min-w-0 flex flex-col justify-between py-0.5">
+        <div>
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <p className="font-semibold truncate text-[15px]" style={{ color: 'hsl(var(--color-text))' }}>{media.title}</p>
+              <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                {/* Progress Badge */}
+                <span 
+                  className="badge flex items-center gap-1 font-bold text-[11px]" 
+                  style={{
+                    background: isTv ? 'hsl(var(--color-brand) / 0.12)' : 'hsl(var(--color-accent) / 0.12)',
+                    color: isTv ? 'hsl(var(--color-brand))' : 'hsl(var(--color-accent))',
+                    border: `1px solid ${isTv ? 'hsl(var(--color-brand) / 0.2)' : 'hsl(var(--color-accent) / 0.2)'}`
+                  }}
+                >
+                  {isTv ? `Season ${item.current_season}: Episode ${item.current_episode}` : 'Movie'}
+                </span>
 
-        {/* Timestamp chip */}
-        <div
-          className="inline-flex items-center gap-1.5 mt-2 px-2.5 py-1 rounded-lg text-sm font-medium"
-          style={{ background: 'hsl(var(--color-accent) / 0.12)', color: 'hsl(var(--color-accent))' }}
-        >
-          <Clock size={13} />
-          Paused at {timestamp}
+                {/* Mid-Episode Timestamp */}
+                {item.last_timestamp && (
+                  <div
+                    className="badge flex items-center gap-1 font-bold text-[11px]"
+                    style={{ 
+                      background: 'hsl(var(--color-accent) / 0.1)', 
+                      color: 'hsl(var(--color-accent))',
+                      border: '1px solid hsl(var(--color-accent) / 0.2)'
+                    }}
+                  >
+                    <Clock size={11} />
+                    Paused at {item.last_timestamp}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Actions */}
-        <div className="flex items-center gap-2 mt-3">
+        <div className="flex items-center gap-2.5 mt-3">
           <button
-            onClick={() => setShowTimestamp(true)}
-            className="btn btn-ghost text-xs"
-            style={{ padding: '0.35rem 0.75rem' }}
+            onClick={() => setShowTimestampModal(true)}
+            className="btn btn-ghost text-xs flex items-center gap-1"
+            style={{ padding: '0.4rem 0.85rem', borderRadius: '0.5rem' }}
           >
             <Clock size={13} />
-            Update
+            Update Progress
           </button>
           <button
-            onClick={onMarkWatched}
-            className="btn text-xs"
+            onClick={() => onMarkCompleted(item)}
+            className="btn text-xs flex items-center gap-1 hover:scale-[1.02] transition-transform"
             style={{
-              padding: '0.35rem 0.75rem',
-              background: 'hsl(var(--color-success) / 0.15)',
+              padding: '0.4rem 0.85rem',
+              background: 'hsl(var(--color-success) / 0.1)',
               color: 'hsl(var(--color-success))',
-              border: '1px solid hsl(var(--color-success) / 0.3)',
+              border: '1px solid hsl(var(--color-success) / 0.2)',
+              borderRadius: '0.5rem',
+              cursor: 'pointer'
             }}
           >
             <CheckCircle2 size={13} />
-            Mark Watched
+            {isTv ? 'Mark Episode Watched' : 'Mark Completed'}
           </button>
         </div>
       </div>
 
-      {showTimestamp && (
+      {showTimestampModal && (
         <TimestampModal
-          current={timestamp}
-          label={timestampLabel}
-          onClose={() => setShowTimestamp(false)}
-          onSave={async (ts) => {
-            await onTimestampUpdate(ts);
-            setShowTimestamp(false);
+          current={item.last_timestamp ?? ''}
+          label={media.title}
+          isTv={isTv}
+          currentSeason={item.current_season}
+          currentEpisode={item.current_episode}
+          onClose={() => setShowTimestampModal(false)}
+          onSave={async (ts, s, e) => {
+            await onProgressUpdate(item, s ?? item.current_season, e ?? item.current_episode, ts);
+            setShowTimestampModal(false);
           }}
         />
       )}

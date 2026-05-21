@@ -66,7 +66,7 @@ export default function SearchPage() {
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [query, mediaType, doSearch]);
 
-  async function addToWatchlist(item: TmdbSearchResult) {
+  async function addToWatchlist(item: TmdbSearchResult, status: 'to_watch' | 'watching') {
     const key = `${item.id}-${item.media_type}`;
     if (watchlistIds.has(key) || addingId === key) return;
     setAddingId(key);
@@ -96,12 +96,20 @@ export default function SearchPage() {
       const { error } = await supabase.from('watchlist').insert({
         user_id: user.id,
         media_id,
-        status: 'to_watch',
+        status: status,
+        current_season: 1,
+        current_episode: 1,
       });
       if (error && error.code !== '23505') throw error;
 
       setWatchlistIds((prev) => new Set([...prev, key]));
-      toast({ title: 'Added to watchlist!', description: `${item.title ?? item.name} is now in My List.` });
+      
+      const successTitle = status === 'to_watch' ? 'Added to Watchlist!' : 'Started Watching!';
+      const successDesc = status === 'to_watch' 
+        ? `${item.title ?? item.name} is now in your Watchlist.`
+        : `${item.title ?? item.name} is now in In Progress.`;
+      
+      toast({ title: successTitle, description: successDesc });
     } catch (err) {
       toast({ title: 'Failed to add', description: String(err), variant: 'destructive' });
     } finally {
@@ -242,29 +250,62 @@ export default function SearchPage() {
               <div style={{ padding: '0.75rem' }}>
                 <p className="text-sm font-semibold leading-tight truncate" title={title}>{title}</p>
                 {year && <p className="text-subtle text-xs mt-0.5">{year}</p>}
-                <button
-                  id={`add-${item.media_type}-${item.id}`}
-                  onClick={() => addToWatchlist(item)}
-                  disabled={inList || isAdding}
-                  className="btn w-full mt-2.5 text-xs"
-                  style={{
-                    padding: '0.4rem 0',
-                    background: inList
-                      ? 'hsl(var(--color-success) / 0.15)'
-                      : 'hsl(var(--color-brand) / 0.15)',
-                    color: inList ? 'hsl(var(--color-success))' : 'hsl(var(--color-brand))',
-                    border: `1px solid ${inList ? 'hsl(var(--color-success) / 0.3)' : 'hsl(var(--color-brand) / 0.3)'}`,
-                    cursor: inList ? 'default' : 'pointer',
-                  }}
-                >
-                  {isAdding ? (
-                    <Loader2 size={12} className="animate-spin" />
-                  ) : inList ? (
-                    <><Check size={12} /> In List</>
-                  ) : (
-                    <><Plus size={12} /> Add to List</>
-                  )}
-                </button>
+                {inList ? (
+                  <button
+                    disabled
+                    className="btn w-full mt-2.5 text-xs flex items-center justify-center gap-1"
+                    style={{
+                      padding: '0.45rem 0',
+                      background: 'hsl(var(--color-success) / 0.12)',
+                      color: 'hsl(var(--color-success))',
+                      border: '1px solid hsl(var(--color-success) / 0.25)',
+                      cursor: 'default',
+                    }}
+                  >
+                    <Check size={12} /> In List
+                  </button>
+                ) : (
+                  <div className="flex flex-col gap-1.5 mt-2.5">
+                    <button
+                      id={`add-watchlist-${item.media_type}-${item.id}`}
+                      onClick={() => addToWatchlist(item, 'to_watch')}
+                      disabled={isAdding}
+                      className="btn w-full text-xs flex items-center justify-center gap-1 hover:scale-[1.02] active:scale-[0.98] transition-transform duration-200"
+                      style={{
+                        padding: '0.45rem 0',
+                        background: 'hsl(var(--color-brand) / 0.1)',
+                        color: 'hsl(var(--color-brand))',
+                        border: '1px solid hsl(var(--color-brand) / 0.25)',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {isAdding ? (
+                        <Loader2 size={12} className="animate-spin" />
+                      ) : (
+                        <><Plus size={12} /> Watchlist</>
+                      )}
+                    </button>
+                    <button
+                      id={`start-watching-${item.media_type}-${item.id}`}
+                      onClick={() => addToWatchlist(item, 'watching')}
+                      disabled={isAdding}
+                      className="btn w-full text-xs flex items-center justify-center gap-1 hover:scale-[1.02] active:scale-[0.98] transition-transform duration-200"
+                      style={{
+                        padding: '0.45rem 0',
+                        background: 'hsl(var(--color-accent) / 0.1)',
+                        color: 'hsl(var(--color-accent))',
+                        border: '1px solid hsl(var(--color-accent) / 0.25)',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {isAdding ? (
+                        <Loader2 size={12} className="animate-spin" />
+                      ) : (
+                        <><Plus size={12} /> Start Watching</>
+                      )}
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           );

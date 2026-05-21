@@ -12,7 +12,7 @@ import ThemeToggle from '@/components/nav/theme-toggle';
 
 const NAV_ITEMS = [
   { href: '/search',        label: 'Search',      icon: Search },
-  { href: '/my-list',       label: 'My List',     icon: List },
+  { href: '/my-list',       label: 'Watchlist',   icon: List },
   { href: '/in-progress',   label: 'In Progress', icon: PlayCircle },
 ];
 

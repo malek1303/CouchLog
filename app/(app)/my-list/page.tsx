@@ -32,6 +32,7 @@ export default function MyListPage() {
       .from('watchlist')
       .select('*, media(*)')
       .eq('user_id', user.id)
+      .eq('status', 'to_watch')
       .order('created_at', { ascending: false });
     setItems((data as Watchlist[]) ?? []);
     setLoading(false);
@@ -41,13 +42,15 @@ export default function MyListPage() {
 
   async function updateStatus(watchlistId: string, status: WatchlistStatus) {
     await supabase.from('watchlist').update({ status }).eq('id', watchlistId);
-    setItems((prev) => prev.map((i) => i.id === watchlistId ? { ...i, status } : i));
+    // Remove from Watchlist view since its status is no longer 'to_watch'
+    setItems((prev) => prev.filter((i) => i.id !== watchlistId));
+    toast({ title: 'Status updated' });
   }
 
   async function removeFromList(watchlistId: string) {
     await supabase.from('watchlist').delete().eq('id', watchlistId);
     setItems((prev) => prev.filter((i) => i.id !== watchlistId));
-    toast({ title: 'Removed from list' });
+    toast({ title: 'Removed from watchlist' });
   }
 
   if (loading) {
@@ -61,11 +64,11 @@ export default function MyListPage() {
   if (items.length === 0) {
     return (
       <div className="animate-fade-in">
-        <h1 className="mb-1">My List</h1>
+        <h1 className="mb-1">Watchlist</h1>
         <p className="text-muted mb-12">Manage your watchlist and track progress.</p>
         <div className="text-center py-20">
           <Film size={48} className="mx-auto mb-4" style={{ color: 'hsl(var(--color-border))' }} />
-          <p className="text-muted text-lg">Your list is empty</p>
+          <p className="text-muted text-lg">Your watchlist is empty</p>
           <p className="text-subtle text-sm mt-1">Search for movies and TV shows to add them here.</p>
         </div>
       </div>
@@ -75,8 +78,8 @@ export default function MyListPage() {
   return (
     <div className="animate-fade-in">
       <div className="mb-8">
-        <h1 className="mb-1">My List</h1>
-        <p className="text-muted">{items.length} title{items.length !== 1 ? 's' : ''} tracked</p>
+        <h1 className="mb-1">Watchlist</h1>
+        <p className="text-muted">{items.length} title{items.length !== 1 ? 's' : ''} saved</p>
       </div>
 
       <div className="space-y-4">

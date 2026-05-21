@@ -22,6 +22,9 @@ export interface Watchlist {
   user_id: string;
   media_id: string;
   status: WatchlistStatus;
+  current_season: number;
+  current_episode: number;
+  last_timestamp: string | null;
   created_at: string;
   // Joined
   media?: Media;
