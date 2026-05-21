@@ -2,9 +2,11 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Image from 'next/image';
-import { Clock, Loader2, CheckCircle2, Tv, Film } from 'lucide-react';
+import {
+  Clock, Loader2, CheckCircle2, Tv, Film, ChevronDown, ChevronUp, Check
+} from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import { Watchlist } from '@/lib/types';
+import { Watchlist, EpisodeProgress, TmdbTvDetails, TmdbSeason, TmdbEpisode } from '@/lib/types';
 import { posterUrl } from '@/lib/tmdb';
 import TimestampModal from '@/components/progress/timestamp-modal';
 import { useToast } from '@/hooks/use-toast';
@@ -61,7 +63,7 @@ export default function InProgressPage() {
 
   async function markCompleted(item: Watchlist) {
     if (item.media?.media_type === 'tv') {
-      // For TV shows: advance to the next episode and clear timestamp
+      // For TV: increment episode
       const nextEp = item.current_episode + 1;
       const { error } = await supabase
         .from('watchlist')
@@ -85,7 +87,7 @@ export default function InProgressPage() {
       );
       toast({ title: 'Episode marked as watched!', description: `Advanced to S${item.current_season}E${nextEp}.` });
     } else {
-      // For Movies: mark status as completed and remove from In Progress view
+      // For Movie: set status to completed
       const { error } = await supabase
         .from('watchlist')
         .update({
@@ -117,7 +119,7 @@ export default function InProgressPage() {
       <div className="mb-8">
         <h1 className="mb-1">In Progress</h1>
         <p className="text-muted">
-          {items.length === 0 ? 'Nothing in progress right now.' : `${items.length} show${items.length !== 1 ? 's' : ''} actively being tracked.`}
+          {items.length === 0 ? 'Nothing in progress right now.' : `${items.length} title${items.length !== 1 ? 's' : ''} actively being tracked.`}
         </p>
       </div>
 
@@ -125,7 +127,7 @@ export default function InProgressPage() {
         <div className="text-center py-20">
           <Clock size={48} className="mx-auto mb-4" style={{ color: 'hsl(var(--color-border))' }} />
           <p className="text-muted text-lg">Nothing in progress</p>
-          <p className="text-subtle text-sm mt-1">Start watching a show or movie from Search to track your progress here.</p>
+          <p className="text-subtle text-sm mt-1">Start watching a show or movie from Search or Watchlist to track progress here.</p>
         </div>
       ) : (
         <div className="space-y-4">
@@ -152,95 +154,194 @@ interface InProgressCardProps {
 
 function InProgressCard({ item, onProgressUpdate, onMarkCompleted }: InProgressCardProps) {
   const [showTimestampModal, setShowTimestampModal] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const media = item.media!;
   const isTv = media.media_type === 'tv';
 
+  const [showData, setShowData] = useState<TmdbTvDetails | null>(null);
+  const [progress, setProgress] = useState<Record<string, EpisodeProgress>>({});
+  const [loadingTv, setLoadingTv] = useState(isTv);
+  const supabase = createClient();
+
+  useEffect(() => {
+    if (!isTv) return;
+    async function load() {
+      try {
+        const [showRes, { data: { user } }] = await Promise.all([
+          fetch(`/api/tmdb/media/tv/${media.tmdb_id}`),
+          supabase.auth.getUser(),
+        ]);
+        const show: TmdbTvDetails = await showRes.json();
+        setShowData(show);
+
+        if (user) {
+          const { data } = await supabase
+            .from('episode_progress')
+            .select('*')
+            .eq('user_id', user.id)
+            .eq('media_id', media.id);
+          const map: Record<string, EpisodeProgress> = {};
+          data?.forEach((ep) => {
+            map[`${ep.season_number}-${ep.episode_number}`] = ep;
+          });
+          setProgress(map);
+        }
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoadingTv(false);
+      }
+    }
+    load();
+  }, [media.id, media.tmdb_id, isTv, supabase]);
+
+  // Calculate overall show progress stats
+  const totalEpisodes = showData?.number_of_episodes || 0;
+  const totalWatched = Object.values(progress).filter((ep) => ep.watched).length;
+  const overallPercentage = totalEpisodes > 0 ? Math.round((totalWatched / totalEpisodes) * 100) : 0;
+
   return (
-    <div className="card flex gap-4 p-4 animate-slide-up relative overflow-hidden group">
-      {/* Poster */}
-      <div className="relative flex-shrink-0" style={{ width: 68, height: 102, borderRadius: '0.625rem', overflow: 'hidden' }}>
-        {media.poster_path ? (
-          <Image
-            src={posterUrl(media.poster_path, 'w185')}
-            alt={media.title}
-            fill
-            sizes="68px"
-            className="object-cover transition-transform duration-300 group-hover:scale-105"
-            unoptimized
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center" style={{ background: 'hsl(var(--color-surface-2))' }}>
-            {isTv ? <Tv size={22} style={{ color: 'hsl(var(--color-border))' }} /> : <Film size={22} style={{ color: 'hsl(var(--color-border))' }} />}
-          </div>
-        )}
-      </div>
+    <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+      {/* Header Info Block */}
+      <div 
+        className={`flex gap-4 p-4 transition-colors ${isTv ? 'cursor-pointer hover:bg-white/[0.01]' : ''}`}
+        onClick={() => { if (isTv) setExpanded(!expanded); }}
+      >
+        {/* Poster */}
+        <div className="relative flex-shrink-0" style={{ width: 68, height: 102, borderRadius: '0.625rem', overflow: 'hidden' }}>
+          {media.poster_path ? (
+            <Image
+              src={posterUrl(media.poster_path, 'w185')}
+              alt={media.title}
+              fill
+              sizes="68px"
+              className="object-cover transition-transform duration-300 group-hover:scale-105"
+              unoptimized
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center" style={{ background: 'hsl(var(--color-surface-2))' }}>
+              {isTv ? <Tv size={22} style={{ color: 'hsl(var(--color-border))' }} /> : <Film size={22} style={{ color: 'hsl(var(--color-border))' }} />}
+            </div>
+          )}
+        </div>
 
-      {/* Info */}
-      <div className="flex-1 min-w-0 flex flex-col justify-between py-0.5">
-        <div>
-          <div className="flex items-start justify-between gap-2">
-            <div>
-              <p className="font-semibold truncate text-[15px]" style={{ color: 'hsl(var(--color-text))' }}>{media.title}</p>
-              <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                {/* Progress Badge */}
-                <span 
-                  className="badge flex items-center gap-1 font-bold text-[11px]" 
-                  style={{
-                    background: isTv ? 'hsl(var(--color-brand) / 0.12)' : 'hsl(var(--color-accent) / 0.12)',
-                    color: isTv ? 'hsl(var(--color-brand))' : 'hsl(var(--color-accent))',
-                    border: `1px solid ${isTv ? 'hsl(var(--color-brand) / 0.2)' : 'hsl(var(--color-accent) / 0.2)'}`
-                  }}
-                >
-                  {isTv ? `Season ${item.current_season}: Episode ${item.current_episode}` : 'Movie'}
-                </span>
-
-                {/* Mid-Episode Timestamp */}
-                {item.last_timestamp && (
-                  <div
-                    className="badge flex items-center gap-1 font-bold text-[11px]"
-                    style={{ 
-                      background: 'hsl(var(--color-accent) / 0.1)', 
-                      color: 'hsl(var(--color-accent))',
-                      border: '1px solid hsl(var(--color-accent) / 0.2)'
+        {/* Info */}
+        <div className="flex-1 min-w-0 flex flex-col justify-between py-0.5">
+          <div>
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="font-semibold truncate text-[15px]" style={{ color: 'hsl(var(--color-text))' }}>{media.title}</p>
+                <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                  {/* Progress Badge */}
+                  <span 
+                    className="badge flex items-center gap-1 font-bold text-[11px]" 
+                    style={{
+                      background: isTv ? 'hsl(var(--color-brand) / 0.12)' : 'hsl(var(--color-accent) / 0.12)',
+                      color: isTv ? 'hsl(var(--color-brand))' : 'hsl(var(--color-accent))',
+                      border: `1px solid ${isTv ? 'hsl(var(--color-brand) / 0.2)' : 'hsl(var(--color-accent) / 0.2)'}`
                     }}
                   >
-                    <Clock size={11} />
-                    Paused at {item.last_timestamp}
-                  </div>
-                )}
+                    {isTv ? `Season ${item.current_season}: Episode ${item.current_episode}` : 'Movie'}
+                  </span>
+
+                  {/* Mid-Episode Timestamp */}
+                  {item.last_timestamp && (
+                    <div
+                      className="badge flex items-center gap-1 font-bold text-[11px]"
+                      style={{ 
+                        background: 'hsl(var(--color-accent) / 0.1)', 
+                        color: 'hsl(var(--color-accent))',
+                        border: '1px solid hsl(var(--color-accent) / 0.2)'
+                      }}
+                    >
+                      <Clock size={11} />
+                      Paused at {item.last_timestamp}
+                    </div>
+                  )}
+
+                  {/* TV Overall Progress Bar in Card Header */}
+                  {isTv && !loadingTv && showData && (
+                    <div className="flex items-center gap-1.5 ml-1" style={{ display: 'inline-flex' }} onClick={(e) => e.stopPropagation()}>
+                      <div style={{
+                        width: 70,
+                        height: 5,
+                        background: 'hsl(var(--color-surface-3))',
+                        borderRadius: 99,
+                        overflow: 'hidden',
+                        position: 'relative',
+                        border: '1px solid hsl(var(--color-border) / 0.3)'
+                      }}>
+                        <div style={{
+                          width: `${overallPercentage}%`,
+                          height: '100%',
+                          background: 'linear-gradient(90deg, hsl(var(--color-brand)) 0%, hsl(var(--color-accent)) 100%)',
+                          borderRadius: 99,
+                          transition: 'width 0.4s cubic-bezier(0.4, 0, 0.2, 1)'
+                        }} />
+                      </div>
+                      <span className="text-[10px] font-bold text-subtle">
+                        {overallPercentage}% ({totalWatched}/{totalEpisodes})
+                      </span>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
-        </div>
 
-        {/* Actions */}
-        <div className="flex items-center gap-2.5 mt-3">
-          <button
-            onClick={() => setShowTimestampModal(true)}
-            className="btn btn-ghost text-xs flex items-center gap-1"
-            style={{ padding: '0.4rem 0.85rem', borderRadius: '0.5rem' }}
-          >
-            <Clock size={13} />
-            Update Progress
-          </button>
-          <button
-            onClick={() => onMarkCompleted(item)}
-            className="btn text-xs flex items-center gap-1 hover:scale-[1.02] transition-transform"
-            style={{
-              padding: '0.4rem 0.85rem',
-              background: 'hsl(var(--color-success) / 0.1)',
-              color: 'hsl(var(--color-success))',
-              border: '1px solid hsl(var(--color-success) / 0.2)',
-              borderRadius: '0.5rem',
-              cursor: 'pointer'
-            }}
-          >
-            <CheckCircle2 size={13} />
-            {isTv ? 'Mark Episode Watched' : 'Mark Completed'}
-          </button>
+          {/* Card Face Quick Actions */}
+          <div className="flex items-center gap-2.5 mt-3" onClick={(e) => e.stopPropagation()}>
+            <button
+              onClick={() => setShowTimestampModal(true)}
+              className="btn btn-ghost text-xs flex items-center gap-1"
+              style={{ padding: '0.4rem 0.85rem', borderRadius: '0.5rem' }}
+            >
+              <Clock size={13} />
+              Update Progress
+            </button>
+            <button
+              onClick={() => onMarkCompleted(item)}
+              className="btn text-xs flex items-center gap-1 hover:scale-[1.02] transition-transform"
+              style={{
+                padding: '0.4rem 0.85rem',
+                background: 'hsl(var(--color-success) / 0.1)',
+                color: 'hsl(var(--color-success))',
+                border: '1px solid hsl(var(--color-success) / 0.2)',
+                borderRadius: '0.5rem',
+                cursor: 'pointer'
+              }}
+            >
+              <CheckCircle2 size={13} />
+              {isTv ? 'Mark Episode Watched' : 'Mark Completed'}
+            </button>
+          </div>
+
+          {/* Expand episodes label for TV */}
+          {isTv && (
+            <div className="mt-2.5">
+              <span className="flex items-center gap-1 text-[11px] font-semibold text-subtle">
+                {expanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                {expanded ? 'Hide full details' : 'View all episodes'}
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
+      {/* Collapsible Episode list for TV */}
+      {isTv && expanded && showData && (
+        <div style={{ borderTop: '1px solid hsl(var(--color-border))' }}>
+          <EpisodeList
+            mediaId={media.id}
+            tmdbId={media.tmdb_id}
+            showData={showData}
+            progress={progress}
+            setProgress={setProgress}
+          />
+        </div>
+      )}
+
+      {/* Render TimestampModal */}
       {showTimestampModal && (
         <TimestampModal
           current={item.last_timestamp ?? ''}
@@ -252,6 +353,228 @@ function InProgressCard({ item, onProgressUpdate, onMarkCompleted }: InProgressC
           onSave={async (ts, s, e) => {
             await onProgressUpdate(item, s ?? item.current_season, e ?? item.current_episode, ts);
             setShowTimestampModal(false);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── EpisodeList ────────────────────────────────────────────────
+function EpisodeList({
+  mediaId,
+  tmdbId,
+  showData,
+  progress,
+  setProgress,
+}: {
+  mediaId: string;
+  tmdbId: number;
+  showData: TmdbTvDetails;
+  progress: Record<string, EpisodeProgress>;
+  setProgress: React.Dispatch<React.SetStateAction<Record<string, EpisodeProgress>>>;
+}) {
+  const [openSeason, setOpenSeason] = useState<number | null>(null);
+  const [episodeData, setEpisodeData] = useState<Record<number, TmdbEpisode[]>>({});
+  const supabase = createClient();
+
+  async function loadSeasonEpisodes(seasonNum: number) {
+    if (episodeData[seasonNum]) return;
+    const res = await fetch(`/api/tmdb/media/tv/${tmdbId}?season=${seasonNum}`);
+    const data: TmdbSeason = await res.json();
+    setEpisodeData((prev) => ({ ...prev, [seasonNum]: data.episodes ?? [] }));
+  }
+
+  async function toggleEpisode(seasonNum: number, epNum: number) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const key = `${seasonNum}-${epNum}`;
+    const existing = progress[key];
+    const newWatched = !existing?.watched;
+    const { data } = await supabase
+      .from('episode_progress')
+      .upsert({
+        user_id: user.id,
+        media_id: mediaId,
+        season_number: seasonNum,
+        episode_number: epNum,
+        watched: newWatched,
+        watched_at: newWatched ? new Date().toISOString() : null,
+        stopped_at_timestamp: newWatched ? null : existing?.stopped_at_timestamp,
+      }, { onConflict: 'user_id,media_id,season_number,episode_number' })
+      .select().single();
+    setProgress((prev) => ({ ...prev, [key]: data }));
+  }
+
+  const realSeasons = showData.seasons.filter((s) => s.season_number > 0);
+
+  return (
+    <div>
+      {realSeasons.map((season) => {
+        const isOpen = openSeason === season.season_number;
+        const eps = episodeData[season.season_number] ?? [];
+        
+        const watchedCount = Object.values(progress).filter(
+          (ep) => ep.season_number === season.season_number && ep.watched
+        ).length;
+        const percentage = season.episode_count ? Math.round((watchedCount / season.episode_count) * 100) : 0;
+
+        return (
+          <div key={season.season_number} style={{ borderBottom: '1px solid hsl(var(--color-border) / 0.5)' }}>
+            <button
+              onClick={async () => {
+                if (!isOpen) await loadSeasonEpisodes(season.season_number);
+                setOpenSeason(isOpen ? null : season.season_number);
+              }}
+              className="w-full flex items-center justify-between px-4 py-3 text-sm transition-all hover:bg-white/[0.02]"
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'hsl(var(--color-text))' }}
+            >
+              <div className="flex flex-col items-start gap-1">
+                <span className="font-medium">{season.name}</span>
+                <div className="flex items-center gap-2 mt-1">
+                  <div style={{
+                    width: 100,
+                    height: 6,
+                    background: 'hsl(var(--color-surface-3))',
+                    borderRadius: 99,
+                    overflow: 'hidden',
+                    position: 'relative'
+                  }}>
+                    <div style={{
+                      width: `${percentage}%`,
+                      height: '100%',
+                      background: 'linear-gradient(90deg, hsl(var(--color-brand)) 0%, hsl(var(--color-accent)) 100%)',
+                      borderRadius: 99,
+                      transition: 'width 0.35s cubic-bezier(0.4, 0, 0.2, 1)'
+                    }} />
+                  </div>
+                  <span className="text-[10px] font-bold text-subtle" style={{ minWidth: 28, textAlign: 'left' }}>{percentage}%</span>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-xs" style={{ color: 'hsl(var(--color-text-muted))' }}>
+                  {watchedCount}/{season.episode_count} ep{season.episode_count !== 1 ? 's' : ''}
+                </span>
+                {isOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+              </div>
+            </button>
+
+            {isOpen && (
+              <div style={{ padding: '0 1rem 1rem' }}>
+                {eps.length === 0 ? (
+                  <p className="text-subtle text-sm">No episodes found.</p>
+                ) : (
+                  eps.map((ep) => (
+                    <EpisodeRow
+                      key={ep.episode_number}
+                      episode={ep}
+                      seasonNum={season.season_number}
+                      mediaId={mediaId}
+                      progress={progress[`${season.season_number}-${ep.episode_number}`]}
+                      onToggle={() => toggleEpisode(season.season_number, ep.episode_number)}
+                      onProgressUpdate={(updated) => setProgress((prev) => ({
+                        ...prev,
+                        [`${season.season_number}-${ep.episode_number}`]: updated,
+                      }))}
+                    />
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── EpisodeRow ─────────────────────────────────────────────────
+function EpisodeRow({
+  episode,
+  seasonNum,
+  mediaId,
+  progress,
+  onToggle,
+  onProgressUpdate,
+}: {
+  episode: TmdbEpisode;
+  seasonNum: number;
+  mediaId: string;
+  progress: EpisodeProgress | undefined;
+  onToggle: () => void;
+  onProgressUpdate: (p: EpisodeProgress) => void;
+}) {
+  const [showTimestamp, setShowTimestamp] = useState(false);
+  const supabase = createClient();
+  const watched = progress?.watched ?? false;
+
+  return (
+    <div
+      className="flex items-center gap-3 py-2 rounded-lg px-2 -mx-2 transition-all animate-slide-up"
+      style={{ background: watched ? 'hsl(var(--color-success) / 0.05)' : 'transparent' }}
+    >
+      {/* Watched checkbox */}
+      <button
+        onClick={onToggle}
+        aria-label={`Mark S${seasonNum}E${episode.episode_number} as ${watched ? 'unwatched' : 'watched'}`}
+        style={{ background: 'none', border: 'none', cursor: 'pointer', flexShrink: 0, padding: 0 }}
+      >
+        <div style={{
+          width: 18, height: 18, borderRadius: '50%',
+          background: watched ? 'hsl(var(--color-success))' : 'transparent',
+          border: `2px solid ${watched ? 'hsl(var(--color-success))' : 'hsl(var(--color-border))'}`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s',
+        }}>
+          {watched && <Check size={10} color="#fff" strokeWidth={3} />}
+        </div>
+      </button>
+
+      {/* Episode info */}
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium truncate" style={{ color: watched ? 'hsl(var(--color-text-muted))' : 'hsl(var(--color-text))', textDecoration: watched ? 'line-through' : 'none' }}>
+          <span className="text-subtle mr-1">E{episode.episode_number.toString().padStart(2, '0')}</span>
+          {episode.name}
+        </p>
+        {episode.air_date && (
+          <p className="text-xs text-subtle">{new Date(episode.air_date).toLocaleDateString()}</p>
+        )}
+      </div>
+
+      {/* Timestamp button */}
+      <button
+        onClick={() => setShowTimestamp(true)}
+        className="flex items-center gap-1 text-xs flex-shrink-0"
+        style={{
+          background: 'none', border: 'none', cursor: 'pointer',
+          color: progress?.stopped_at_timestamp ? 'hsl(var(--color-accent))' : 'hsl(var(--color-text-subtle))',
+        }}
+        aria-label="Set stopped timestamp"
+      >
+        <Clock size={12} />
+        {progress?.stopped_at_timestamp ?? 'Set timestamp'}
+      </button>
+
+      {showTimestamp && (
+        <TimestampModal
+          current={progress?.stopped_at_timestamp ?? ''}
+          label={`S${seasonNum}E${episode.episode_number} — ${episode.name}`}
+          onClose={() => setShowTimestamp(false)}
+          onSave={async (ts) => {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) return;
+            const { data } = await supabase
+              .from('episode_progress')
+              .upsert({
+                user_id: user.id,
+                media_id: mediaId,
+                season_number: seasonNum,
+                episode_number: episode.episode_number,
+                watched: progress?.watched ?? false,
+                stopped_at_timestamp: ts || null,
+              }, { onConflict: 'user_id,media_id,season_number,episode_number' })
+              .select().single();
+            onProgressUpdate(data);
+            setShowTimestamp(false);
           }}
         />
       )}

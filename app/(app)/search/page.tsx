@@ -110,8 +110,9 @@ export default function SearchPage() {
         : `${item.title ?? item.name} is now in In Progress.`;
       
       toast({ title: successTitle, description: successDesc });
-    } catch (err) {
-      toast({ title: 'Failed to add', description: String(err), variant: 'destructive' });
+    } catch (err: any) {
+      const message = err?.message || (err && typeof err === 'object' ? JSON.stringify(err) : String(err));
+      toast({ title: 'Failed to add', description: message, variant: 'destructive' });
     } finally {
       setAddingId(null);
     }

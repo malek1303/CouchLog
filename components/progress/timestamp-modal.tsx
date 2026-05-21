@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Clock, Check } from 'lucide-react';
 
 interface TimestampModalProps {
@@ -22,6 +23,13 @@ export default function TimestampModal({
   onClose,
   onSave,
 }: TimestampModalProps) {
+  // SSR safety for Portals
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+    return () => setMounted(false);
+  }, []);
+
   // Parse initial timestamp
   const initialTime = parseTimestamp(current);
 
@@ -252,6 +260,7 @@ export default function TimestampModal({
           </button>
         </div>
       </div>
-    </div>
-  );
+    </div>,
+    document.body
+  ) : null;
 }
