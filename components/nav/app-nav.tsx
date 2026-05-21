@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import {
-  Search, List, PlayCircle, Bell, Tv, LogOut, Menu, X
+  Search, List, PlayCircle, Bell, Tv, LogOut, Menu, X, Info
 } from 'lucide-react';
 import NotificationBell from '@/components/notifications/notification-bell';
 import ThemeToggle from '@/components/nav/theme-toggle';
@@ -14,6 +14,7 @@ const NAV_ITEMS = [
   { href: '/search',        label: 'Search',      icon: Search },
   { href: '/my-list',       label: 'Watchlist',   icon: List },
   { href: '/in-progress',   label: 'In Progress', icon: PlayCircle },
+  { href: '/about',         label: 'About Us',    icon: Info },
 ];
 
 interface AppNavProps {
