@@ -159,3 +159,23 @@ CREATE POLICY "notifications_insert_service"
 CREATE INDEX IF NOT EXISTS idx_notifications_user_unread
   ON public.notifications (user_id, read)
   WHERE read = FALSE;
+
+-- ── 6. HELPER FUNCTIONS ──────────────────────────────────────
+CREATE OR REPLACE FUNCTION public.check_email_exists(p_email TEXT)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER -- Runs with elevated privileges to access auth schema
+AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 
+    FROM auth.users 
+    WHERE email = LOWER(TRIM(p_email))
+  );
+END;
+$$;
+
+-- Restrict execution to service_role and authenticated users only for extra security
+REVOKE ALL ON FUNCTION public.check_email_exists(TEXT) FROM public, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.check_email_exists(TEXT) TO service_role, authenticated;
+

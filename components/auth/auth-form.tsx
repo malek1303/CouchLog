@@ -107,6 +107,24 @@ export default function AuthForm({ mode }: AuthFormProps) {
         return;
       }
 
+      // Double-check if the email already exists to prevent race conditions
+      try {
+        const checkRes = await fetch('/api/auth/check-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email }),
+        });
+        const checkData = await checkRes.json();
+        if (checkData.exists) {
+          setEmailExists(true);
+          setError('This email is already registered. Please sign in instead.');
+          setLoading(false);
+          return;
+        }
+      } catch (err) {
+        console.error('Failed to double-check email availability:', err);
+      }
+
       if (emailExists) {
         setError('This email is already registered. Please sign in instead.');
         setLoading(false);
