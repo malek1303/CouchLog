@@ -75,6 +75,7 @@ a {
 html {
   color-scheme: dark;
   scroll-behavior: smooth;
+  scrollbar-gutter: stable;
 }
 
 body {
@@ -233,6 +234,22 @@ body {
   .animate-scale-in {
     animation: scaleIn 0.15s cubic-bezier(0.16, 1, 0.3, 1) forwards;
     transform-origin: top right;
+  }
+
+  /* Collapsible Grid Utilities for buttery smooth auto-height expansions */
+  .collapsible-grid {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
+  }
+
+  .collapsible-grid.expanded {
+    grid-template-rows: 1fr;
+  }
+
+  .collapsible-inner {
+    min-height: 0;
   }
 
   @keyframes fadeIn {

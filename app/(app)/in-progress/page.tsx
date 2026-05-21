@@ -452,15 +452,23 @@ function InProgressCard({ item, onProgressUpdate, onMarkCompleted }: InProgressC
       </div>
 
       {/* Collapsible Episode list for TV */}
-      {isTv && expanded && showData && (
-        <div style={{ borderTop: '1px solid hsl(var(--color-border))' }}>
-          <EpisodeList
-            mediaId={media.id}
-            tmdbId={media.tmdb_id}
-            showData={showData}
-            progress={progress}
-            setProgress={setProgress}
-          />
+      {isTv && showData && (
+        <div 
+          className={`collapsible-grid ${expanded ? 'expanded' : ''}`}
+          style={{ 
+            borderTop: expanded ? '1px solid hsl(var(--color-border))' : '1px solid transparent',
+            transition: 'border-color 0.3s, grid-template-rows 0.3s cubic-bezier(0.4, 0, 0.2, 1)' 
+          }}
+        >
+          <div className="collapsible-inner">
+            <EpisodeList
+              mediaId={media.id}
+              tmdbId={media.tmdb_id}
+              showData={showData}
+              progress={progress}
+              setProgress={setProgress}
+            />
+          </div>
         </div>
       )}
 
@@ -582,10 +590,10 @@ function EpisodeList({
               </div>
             </button>
 
-            {isOpen && (
-              <div style={{ padding: '0 1rem 1rem' }}>
+            <div className={`collapsible-grid ${isOpen ? 'expanded' : ''}`}>
+              <div className="collapsible-inner" style={{ padding: isOpen ? '0 1rem 1rem' : '0 1rem' }}>
                 {eps.length === 0 ? (
-                  <p className="text-subtle text-sm">No episodes found.</p>
+                  <p className="text-subtle text-sm pt-2">No episodes found.</p>
                 ) : (
                   eps.map((ep) => (
                     <EpisodeRow
@@ -603,7 +611,7 @@ function EpisodeList({
                   ))
                 )}
               </div>
-            )}
+            </div>
           </div>
         );
       })}
