@@ -149,7 +149,7 @@ export default function AuthForm({ mode }: AuthFormProps) {
       if (error) {
         setError(error.message);
       } else {
-        router.push('/search');
+        router.push('/home');
         router.refresh();
       }
     }

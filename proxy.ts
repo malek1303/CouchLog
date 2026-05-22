@@ -10,9 +10,9 @@ export async function proxy(request: NextRequest) {
 
   // Allow public routes through
   if (PUBLIC_ROUTES.some((r) => pathname.startsWith(r))) {
-    // If already logged in, redirect to /search
+    // If already logged in, redirect to /home
     if (user) {
-      return NextResponse.redirect(new URL('/search', request.url));
+      return NextResponse.redirect(new URL('/home', request.url));
     }
     return supabaseResponse;
   }

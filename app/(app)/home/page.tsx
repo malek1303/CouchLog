@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import Image from 'next/image';
 import { Search as SearchIcon, X, Plus, Check, Loader2, Film, Tv } from 'lucide-react';
-import { TmdbSearchResult, MediaType } from '@/lib/types';
+import { TmdbSearchResult } from '@/lib/types';
 import { createClient } from '@/lib/supabase/client';
 import { posterUrl } from '@/lib/tmdb';
 import { useToast } from '@/hooks/use-toast';
@@ -26,7 +26,7 @@ const RecommendationSkeleton = () => (
   </div>
 );
 
-export default function SearchPage() {
+export default function HomePage() {
   const [query, setQuery] = useState('');
   const [mediaType, setMediaType] = useState<'all' | 'movie' | 'tv'>('all');
   const [results, setResults] = useState<TmdbSearchResult[]>([]);
@@ -277,8 +277,8 @@ export default function SearchPage() {
   return (
     <div className="animate-fade-in">
       <div className="mb-8">
-        <h1 className="mb-1">Search</h1>
-        <p className="text-muted">Find movies and TV shows to add to your list.</p>
+        <h1 className="mb-1">Home</h1>
+        <p className="text-muted">Discover trending and popular movies and TV shows.</p>
       </div>
 
       {/* Search bar + type filter */}
