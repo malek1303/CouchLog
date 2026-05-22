@@ -161,46 +161,51 @@ function InProgressCard({ item, onProgressUpdate, onMarkCompleted }: InProgressC
   const [showData, setShowData] = useState<TmdbTvDetails | null>(null);
   const [progress, setProgress] = useState<Record<string, EpisodeProgress>>({});
   const [loadingTv, setLoadingTv] = useState(isTv);
+  const [isUpdating, setIsUpdating] = useState(false);
   const supabase = createClient();
   const { toast } = useToast();
 
   async function handleMarkCompleted() {
-    if (isTv) {
-      const currentSeason = item.current_season;
-      const currentEp = item.current_episode;
-      const key = `${currentSeason}-${currentEp}`;
+    if (isUpdating || (isTv && loadingTv)) return;
+    setIsUpdating(true);
+    try {
+      if (isTv) {
+        const currentSeason = item.current_season;
+        const currentEp = item.current_episode;
+        const key = `${currentSeason}-${currentEp}`;
 
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
 
-      // 1. Upsert into episode_progress table as watched
-      const { data: epData, error: epError } = await supabase
-        .from('episode_progress')
-        .upsert({
-          user_id: user.id,
-          media_id: media.id,
-          season_number: currentSeason,
-          episode_number: currentEp,
-          watched: true,
-          watched_at: new Date().toISOString(),
-          stopped_at_timestamp: null,
-        }, { onConflict: 'user_id,media_id,season_number,episode_number' })
-        .select()
-        .single();
+        // 1. Upsert into episode_progress table as watched
+        const { data: epData, error: epError } = await supabase
+          .from('episode_progress')
+          .upsert({
+            user_id: user.id,
+            media_id: media.id,
+            season_number: currentSeason,
+            episode_number: currentEp,
+            watched: true,
+            watched_at: new Date().toISOString(),
+            stopped_at_timestamp: null,
+          }, { onConflict: 'user_id,media_id,season_number,episode_number' })
+          .select()
+          .single();
 
-      if (epError) {
-        toast({ title: 'Error marking episode watched', description: epError.message, variant: 'destructive' });
-        return;
+        if (epError) {
+          toast({ title: 'Error marking episode watched', description: epError.message, variant: 'destructive' });
+          return;
+        }
+
+        // 2. Update local checklist state so checklists/progress bars update in real time
+        setProgress((prev) => ({ ...prev, [key]: epData }));
+      } else {
+        await onMarkCompleted(item);
       }
-
-      // 2. Update local checklist state so checklists/progress bars update in real time
-      setProgress((prev) => ({ ...prev, [key]: epData }));
-
-      // 3. Advance to the next episode in the watchlist table
-      const nextEp = currentEp + 1;
-      await onProgressUpdate(item, currentSeason, nextEp, '');
-    } else {
-      await onMarkCompleted(item);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsUpdating(false);
     }
   }
 
@@ -298,14 +303,27 @@ function InProgressCard({ item, onProgressUpdate, onMarkCompleted }: InProgressC
       activeEpisode !== item.current_episode ||
       activeTimestamp !== item.last_timestamp
     ) {
-      onProgressUpdate(item, activeSeason, activeEpisode, activeTimestamp || '');
+      const runSync = async () => {
+        setIsUpdating(true);
+        try {
+          await onProgressUpdate(item, activeSeason, activeEpisode, activeTimestamp || '');
+        } catch (e) {
+          console.error(e);
+        } finally {
+          setIsUpdating(false);
+        }
+      };
+      runSync();
     }
   }, [progress, showData, loadingTv, isTv, item, onProgressUpdate]);
 
   // Calculate overall show progress stats
-  const totalEpisodes = showData?.number_of_episodes || 0;
-  const totalWatched = Object.values(progress).filter((ep) => ep.watched).length;
-  const overallPercentage = totalEpisodes > 0 ? Math.round((totalWatched / totalEpisodes) * 100) : 0;
+  const totalEpisodes = showData
+    ? showData.seasons.filter((s) => s.season_number > 0).reduce((acc, s) => acc + s.episode_count, 0)
+    : 0;
+  const totalWatched = Object.values(progress).filter((ep) => ep.watched && ep.season_number > 0).length;
+  const overallPercentage = totalEpisodes > 0 ? Math.min(100, Math.round((totalWatched / totalEpisodes) * 100)) : 0;
+  const allWatched = isTv && !loadingTv && totalEpisodes > 0 && totalWatched === totalEpisodes;
 
   return (
     <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
@@ -416,26 +434,58 @@ function InProgressCard({ item, onProgressUpdate, onMarkCompleted }: InProgressC
           <div className="flex items-center gap-2.5 mt-3" onClick={(e) => e.stopPropagation()}>
             <button
               onClick={() => setShowTimestampModal(true)}
+              disabled={isUpdating || (isTv && loadingTv)}
               className="btn btn-ghost text-xs flex items-center gap-1"
-              style={{ padding: '0.4rem 0.85rem', borderRadius: '0.5rem' }}
+              style={{
+                padding: '0.4rem 0.85rem',
+                borderRadius: '0.5rem',
+                opacity: (isUpdating || (isTv && loadingTv)) ? 0.5 : 1,
+                cursor: (isUpdating || (isTv && loadingTv)) ? 'not-allowed' : 'pointer'
+              }}
             >
               <Clock size={13} />
               Update Progress
             </button>
             <button
               onClick={handleMarkCompleted}
-              className="btn text-xs flex items-center gap-1 hover:scale-[1.02] transition-transform"
+              disabled={isUpdating || (isTv && loadingTv) || allWatched}
+              className="btn text-xs flex items-center gap-1 transition-transform"
               style={{
                 padding: '0.4rem 0.85rem',
-                background: 'hsl(var(--color-success) / 0.1)',
-                color: 'hsl(var(--color-success))',
-                border: '1px solid hsl(var(--color-success) / 0.2)',
+                background: allWatched
+                  ? 'hsl(var(--color-surface-3))'
+                  : (isUpdating || (isTv && loadingTv))
+                    ? 'hsl(var(--color-surface-2))'
+                    : 'hsl(var(--color-success) / 0.1)',
+                color: allWatched
+                  ? 'hsl(var(--color-text-muted))'
+                  : (isUpdating || (isTv && loadingTv))
+                    ? 'hsl(var(--color-text-subtle))'
+                    : 'hsl(var(--color-success))',
+                border: `1px solid ${
+                  allWatched
+                    ? 'hsl(var(--color-border))'
+                    : (isUpdating || (isTv && loadingTv))
+                      ? 'hsl(var(--color-border) / 0.5)'
+                      : 'hsl(var(--color-success) / 0.2)'
+                }`,
                 borderRadius: '0.5rem',
-                cursor: 'pointer'
+                cursor: (isUpdating || (isTv && loadingTv) || allWatched) ? 'not-allowed' : 'pointer',
+                opacity: (isUpdating || (isTv && loadingTv)) ? 0.7 : 1,
               }}
             >
-              <CheckCircle2 size={13} />
-              {isTv ? 'Mark Episode Watched' : 'Mark Completed'}
+              {isUpdating ? (
+                <Loader2 size={13} className="animate-spin" />
+              ) : (
+                <CheckCircle2 size={13} />
+              )}
+              {isTv
+                ? allWatched
+                  ? 'All Caught Up 🎉'
+                  : isUpdating
+                    ? 'Updating...'
+                    : 'Mark Episode Watched'
+                : 'Mark Completed'}
             </button>
           </div>
 
