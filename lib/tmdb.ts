@@ -13,10 +13,10 @@ function tmdbHeaders() {
   };
 }
 
-async function tmdbFetch<T>(path: string): Promise<T> {
+async function tmdbFetch<T>(path: string, revalidate: number = 3600): Promise<T> {
   const res = await fetch(`${TMDB_BASE}${path}`, {
     headers: tmdbHeaders(),
-    next: { revalidate: 3600 }, // cache for 1 hour
+    next: { revalidate }, // cache control
   });
 
   if (!res.ok) {
@@ -85,3 +85,9 @@ export async function getEpisodesAiringToday(tmdbId: number, numberOfSeasons: nu
 
   return results;
 }
+
+/** Get trending media with a custom 3-day revalidate time (259200 seconds) */
+export async function getTrendingMedia(mediaType: 'movie' | 'tv', timeWindow: 'day' | 'week' = 'week') {
+  return tmdbFetch(`/trending/${mediaType}/${timeWindow}`, 259200);
+}
+

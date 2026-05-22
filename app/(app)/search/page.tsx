@@ -8,6 +8,24 @@ import { createClient } from '@/lib/supabase/client';
 import { posterUrl } from '@/lib/tmdb';
 import { useToast } from '@/hooks/use-toast';
 
+const RecommendationSkeleton = () => (
+  <div
+    className="grid gap-4"
+    style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}
+  >
+    {Array.from({ length: 6 }).map((_, i) => (
+      <div key={i} className="card" style={{ borderRadius: '0.875rem', overflow: 'hidden', padding: 0 }}>
+        <div className="skeleton" style={{ paddingBottom: '150%', width: '100%', borderRadius: 0 }} />
+        <div style={{ padding: '0.75rem' }}>
+          <div className="skeleton" style={{ height: '1.25rem', width: '70%', marginBottom: '0.5rem' }} />
+          <div className="skeleton" style={{ height: '0.75rem', width: '40%', marginBottom: '1rem' }} />
+          <div className="skeleton" style={{ height: '2rem', width: '100%', borderRadius: '0.375rem' }} />
+        </div>
+      </div>
+    ))}
+  </div>
+);
+
 export default function SearchPage() {
   const [query, setQuery] = useState('');
   const [mediaType, setMediaType] = useState<'all' | 'movie' | 'tv'>('all');
@@ -15,6 +33,9 @@ export default function SearchPage() {
   const [loading, setLoading] = useState(false);
   const [watchlistIds, setWatchlistIds] = useState<Set<string>>(new Set());
   const [addingId, setAddingId] = useState<string | null>(null);
+  const [trendingMovies, setTrendingMovies] = useState<TmdbSearchResult[]>([]);
+  const [trendingTv, setTrendingTv] = useState<TmdbSearchResult[]>([]);
+  const [loadingRecommendations, setLoadingRecommendations] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const supabase = createClient();
   const { toast } = useToast();
@@ -40,6 +61,35 @@ export default function SearchPage() {
     }
     loadWatchlist();
   }, [supabase]);
+
+  // Load trending recommendations
+  useEffect(() => {
+    async function loadRecommendations() {
+      setLoadingRecommendations(true);
+      try {
+        const [moviesRes, tvRes] = await Promise.all([
+          fetch('/api/tmdb/trending?type=movie'),
+          fetch('/api/tmdb/trending?type=tv'),
+        ]);
+        if (moviesRes.ok && tvRes.ok) {
+          const moviesData = await moviesRes.json();
+          const tvData = await tvRes.json();
+          
+          // Ensure media_type is set correctly
+          const movies = (moviesData.results ?? []).map((m: any) => ({ ...m, media_type: 'movie' }));
+          const tvShows = (tvData.results ?? []).map((t: any) => ({ ...t, media_type: 'tv' }));
+
+          setTrendingMovies(movies.slice(0, 10)); // Top 10 movies
+          setTrendingTv(tvShows.slice(0, 10)); // Top 10 TV shows
+        }
+      } catch (err) {
+        console.error('Failed to fetch trending recommendations:', err);
+      } finally {
+        setLoadingRecommendations(false);
+      }
+    }
+    loadRecommendations();
+  }, []);
 
   const doSearch = useCallback(async (q: string, type: string) => {
     if (q.trim().length < 2) { setResults([]); return; }
@@ -118,6 +168,112 @@ export default function SearchPage() {
     }
   }
 
+  const renderMediaCard = (item: TmdbSearchResult) => {
+    const key = `${item.id}-${item.media_type}`;
+    const inList = watchlistIds.has(key);
+    const isAdding = addingId === key;
+    const title = item.title ?? item.name ?? 'Unknown';
+    const year = (item.release_date ?? item.first_air_date ?? '').slice(0, 4);
+
+    return (
+      <div key={key} className="card animate-slide-up" style={{ borderRadius: '0.875rem', overflow: 'hidden', padding: 0 }}>
+        {/* Poster */}
+        <div className="relative" style={{ paddingBottom: '150%' }}>
+          {item.poster_path ? (
+            <Image
+              src={posterUrl(item.poster_path, 'w342')}
+              alt={title}
+              fill
+              sizes="(max-width: 768px) 50vw, 200px"
+              className="object-cover"
+              unoptimized
+            />
+          ) : (
+            <div
+              className="absolute inset-0 flex items-center justify-center"
+              style={{ background: 'hsl(var(--color-surface-2))' }}
+            >
+              {item.media_type === 'tv' ? <Tv size={40} style={{ color: 'hsl(var(--color-border))' }} /> : <Film size={40} style={{ color: 'hsl(var(--color-border))' }} />}
+            </div>
+          )}
+          {/* Type badge */}
+          <span
+            className="absolute top-2 left-2 badge"
+            style={{
+              background: item.media_type === 'tv' ? 'hsl(var(--color-brand) / 0.85)' : 'hsl(var(--color-accent) / 0.85)',
+              color: '#fff',
+              backdropFilter: 'blur(8px)',
+            }}
+          >
+            {item.media_type === 'tv' ? 'TV' : 'Film'}
+          </span>
+        </div>
+
+        {/* Info */}
+        <div style={{ padding: '0.75rem' }}>
+          <p className="text-sm font-semibold leading-tight truncate" title={title}>{title}</p>
+          {year && <p className="text-subtle text-xs mt-0.5">{year}</p>}
+          {inList ? (
+            <button
+              disabled
+              className="btn w-full mt-2.5 text-xs flex items-center justify-center gap-1"
+              style={{
+                padding: '0.45rem 0',
+                background: 'hsl(var(--color-success) / 0.12)',
+                color: 'hsl(var(--color-success))',
+                border: '1px solid hsl(var(--color-success) / 0.25)',
+                cursor: 'default',
+              }}
+            >
+              <Check size={12} /> In List
+            </button>
+          ) : (
+            <div className="flex flex-col gap-1.5 mt-2.5">
+              <button
+                id={`add-watchlist-${item.media_type}-${item.id}`}
+                onClick={() => addToWatchlist(item, 'to_watch')}
+                disabled={isAdding}
+                className="btn w-full text-xs flex items-center justify-center gap-1 hover:scale-[1.02] active:scale-[0.98] transition-transform duration-200"
+                style={{
+                  padding: '0.45rem 0',
+                  background: 'hsl(var(--color-brand) / 0.1)',
+                  color: 'hsl(var(--color-brand))',
+                  border: '1px solid hsl(var(--color-brand) / 0.25)',
+                  cursor: 'pointer',
+                }}
+              >
+                {isAdding ? (
+                  <Loader2 size={12} className="animate-spin" />
+                ) : (
+                  <><Plus size={12} /> Watchlist</>
+                )}
+              </button>
+              <button
+                id={`start-watching-${item.media_type}-${item.id}`}
+                onClick={() => addToWatchlist(item, 'watching')}
+                disabled={isAdding}
+                className="btn w-full text-xs flex items-center justify-center gap-1 hover:scale-[1.02] active:scale-[0.98] transition-transform duration-200"
+                style={{
+                  padding: '0.45rem 0',
+                  background: 'hsl(var(--color-accent) / 0.1)',
+                  color: 'hsl(var(--color-accent))',
+                  border: '1px solid hsl(var(--color-accent) / 0.25)',
+                  cursor: 'pointer',
+                }}
+              >
+                {isAdding ? (
+                  <Loader2 size={12} className="animate-spin" />
+                ) : (
+                  <><Plus size={12} /> Start Watching</>
+                )}
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="animate-fade-in">
       <div className="mb-8">
@@ -180,138 +336,96 @@ export default function SearchPage() {
         </div>
       </div>
 
-      {/* Results */}
+      {/* Results / Recommendations Loading States */}
       {loading && (
         <div className="flex items-center justify-center py-16">
           <Loader2 size={32} className="animate-spin" style={{ color: 'hsl(var(--color-brand))' }} />
         </div>
       )}
 
-      {!loading && results.length === 0 && query.length >= 2 && (
-        <div className="text-center py-16">
-          <p className="text-muted text-lg">No results for &ldquo;{query}&rdquo;</p>
-          <p className="text-subtle text-sm mt-1">Try a different search term or filter.</p>
-        </div>
-      )}
-
-      {!loading && results.length === 0 && query.length < 2 && (
-        <div className="text-center py-20">
-          <SearchIcon size={48} className="mx-auto mb-4" style={{ color: 'hsl(var(--color-border))' }} />
-          <p className="text-muted text-lg">Start typing to search TMDB</p>
-          <p className="text-subtle text-sm mt-1">Millions of movies and TV shows at your fingertips.</p>
-        </div>
-      )}
-
-      <div
-        className="grid gap-4"
-        style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}
-      >
-        {results.map((item) => {
-          const key = `${item.id}-${item.media_type}`;
-          const inList = watchlistIds.has(key);
-          const isAdding = addingId === key;
-          const title = item.title ?? item.name ?? 'Unknown';
-          const year = (item.release_date ?? item.first_air_date ?? '').slice(0, 4);
-
-          return (
-            <div key={key} className="card animate-slide-up" style={{ borderRadius: '0.875rem', overflow: 'hidden', padding: 0 }}>
-              {/* Poster */}
-              <div className="relative" style={{ paddingBottom: '150%' }}>
-                {item.poster_path ? (
-                  <Image
-                    src={posterUrl(item.poster_path, 'w342')}
-                    alt={title}
-                    fill
-                    sizes="(max-width: 768px) 50vw, 200px"
-                    className="object-cover"
-                    unoptimized
-                  />
-                ) : (
-                  <div
-                    className="absolute inset-0 flex items-center justify-center"
-                    style={{ background: 'hsl(var(--color-surface-2))' }}
-                  >
-                    {item.media_type === 'tv' ? <Tv size={40} style={{ color: 'hsl(var(--color-border))' }} /> : <Film size={40} style={{ color: 'hsl(var(--color-border))' }} />}
-                  </div>
-                )}
-                {/* Type badge */}
-                <span
-                  className="absolute top-2 left-2 badge"
-                  style={{
-                    background: item.media_type === 'tv' ? 'hsl(var(--color-brand) / 0.85)' : 'hsl(var(--color-accent) / 0.85)',
-                    color: '#fff',
-                    backdropFilter: 'blur(8px)',
-                  }}
-                >
-                  {item.media_type === 'tv' ? 'TV' : 'Film'}
-                </span>
-              </div>
-
-              {/* Info */}
-              <div style={{ padding: '0.75rem' }}>
-                <p className="text-sm font-semibold leading-tight truncate" title={title}>{title}</p>
-                {year && <p className="text-subtle text-xs mt-0.5">{year}</p>}
-                {inList ? (
-                  <button
-                    disabled
-                    className="btn w-full mt-2.5 text-xs flex items-center justify-center gap-1"
-                    style={{
-                      padding: '0.45rem 0',
-                      background: 'hsl(var(--color-success) / 0.12)',
-                      color: 'hsl(var(--color-success))',
-                      border: '1px solid hsl(var(--color-success) / 0.25)',
-                      cursor: 'default',
-                    }}
-                  >
-                    <Check size={12} /> In List
-                  </button>
-                ) : (
-                  <div className="flex flex-col gap-1.5 mt-2.5">
-                    <button
-                      id={`add-watchlist-${item.media_type}-${item.id}`}
-                      onClick={() => addToWatchlist(item, 'to_watch')}
-                      disabled={isAdding}
-                      className="btn w-full text-xs flex items-center justify-center gap-1 hover:scale-[1.02] active:scale-[0.98] transition-transform duration-200"
-                      style={{
-                        padding: '0.45rem 0',
-                        background: 'hsl(var(--color-brand) / 0.1)',
-                        color: 'hsl(var(--color-brand))',
-                        border: '1px solid hsl(var(--color-brand) / 0.25)',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      {isAdding ? (
-                        <Loader2 size={12} className="animate-spin" />
-                      ) : (
-                        <><Plus size={12} /> Watchlist</>
-                      )}
-                    </button>
-                    <button
-                      id={`start-watching-${item.media_type}-${item.id}`}
-                      onClick={() => addToWatchlist(item, 'watching')}
-                      disabled={isAdding}
-                      className="btn w-full text-xs flex items-center justify-center gap-1 hover:scale-[1.02] active:scale-[0.98] transition-transform duration-200"
-                      style={{
-                        padding: '0.45rem 0',
-                        background: 'hsl(var(--color-accent) / 0.1)',
-                        color: 'hsl(var(--color-accent))',
-                        border: '1px solid hsl(var(--color-accent) / 0.25)',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      {isAdding ? (
-                        <Loader2 size={12} className="animate-spin" />
-                      ) : (
-                        <><Plus size={12} /> Start Watching</>
-                      )}
-                    </button>
-                  </div>
-                )}
-              </div>
+      {/* Search results rendering */}
+      {!loading && query.length >= 2 && (
+        <>
+          {results.length === 0 ? (
+            <div className="text-center py-16 animate-fade-in">
+              <p className="text-muted text-lg">No results for &ldquo;{query}&rdquo;</p>
+              <p className="text-subtle text-sm mt-1">Try a different search term or filter.</p>
             </div>
-          );
-        })}
-      </div>
+          ) : (
+            <div
+              className="grid gap-4 animate-fade-in"
+              style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}
+            >
+              {results.map(renderMediaCard)}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Recommendations Feed when no search query */}
+      {!loading && query.length < 2 && (
+        <div className="space-y-10 animate-fade-in">
+          {loadingRecommendations && (
+            <div className="space-y-10">
+              {(mediaType === 'all' || mediaType === 'movie') && (
+                <div>
+                  <h2 className="text-lg font-semibold mb-4 flex items-center gap-2" style={{ color: 'hsl(var(--color-text))' }}>
+                    <Film size={18} style={{ color: 'hsl(var(--color-accent))' }} /> Trending Movies
+                  </h2>
+                  <RecommendationSkeleton />
+                </div>
+              )}
+              {(mediaType === 'all' || mediaType === 'tv') && (
+                <div>
+                  <h2 className="text-lg font-semibold mb-4 flex items-center gap-2" style={{ color: 'hsl(var(--color-text))' }}>
+                    <Tv size={18} style={{ color: 'hsl(var(--color-brand))' }} /> Trending TV Shows
+                  </h2>
+                  <RecommendationSkeleton />
+                </div>
+              )}
+            </div>
+          )}
+
+          {!loadingRecommendations && (
+            <>
+              {(mediaType === 'all' || mediaType === 'movie') && trendingMovies.length > 0 && (
+                <div>
+                  <h2 className="text-lg font-semibold mb-4 flex items-center gap-2" style={{ color: 'hsl(var(--color-text))' }}>
+                    <Film size={18} style={{ color: 'hsl(var(--color-accent))' }} /> Trending Movies
+                  </h2>
+                  <div
+                    className="grid gap-4"
+                    style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}
+                  >
+                    {trendingMovies.map(renderMediaCard)}
+                  </div>
+                </div>
+              )}
+
+              {(mediaType === 'all' || mediaType === 'tv') && trendingTv.length > 0 && (
+                <div>
+                  <h2 className="text-lg font-semibold mb-4 flex items-center gap-2" style={{ color: 'hsl(var(--color-text))' }}>
+                    <Tv size={18} style={{ color: 'hsl(var(--color-brand))' }} /> Trending TV Shows
+                  </h2>
+                  <div
+                    className="grid gap-4"
+                    style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}
+                  >
+                    {trendingTv.map(renderMediaCard)}
+                  </div>
+                </div>
+              )}
+
+              {/* Backwards Search Helper Tip */}
+              <div className="text-center py-8 border-t border-dashed" style={{ borderColor: 'hsl(var(--color-border))', marginTop: '3rem' }}>
+                <p className="text-subtle text-sm">
+                  Can&apos;t find what you&apos;re looking for? Use the search bar above to query millions of movies and TV shows.
+                </p>
+              </div>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
