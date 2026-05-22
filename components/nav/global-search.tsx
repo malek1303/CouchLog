@@ -288,7 +288,7 @@ export default function GlobalSearch({ isOpen, onOpen, onClose }: GlobalSearchPr
                     >
                       {item.poster_path ? (
                         <Image
-                          src={posterUrl(item.poster_path, 'w92')}
+                          src={posterUrl(item.poster_path, 'w185')}
                           alt={title}
                           fill
                           sizes="44px"
