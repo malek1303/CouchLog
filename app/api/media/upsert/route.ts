@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServiceClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 
 /**
  * POST /api/media/upsert
@@ -7,6 +7,13 @@ import { createServiceClient } from '@/lib/supabase/server';
  * Returns the media UUID for use in watchlist insert.
  */
 export async function POST(request: NextRequest) {
+  // Enforce session check
+  const supabaseUser = await createClient();
+  const { data: { user } } = await supabaseUser.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   const body = await request.json();
   const { tmdb_id, media_type, title, poster_path, overview, status } = body;
 
