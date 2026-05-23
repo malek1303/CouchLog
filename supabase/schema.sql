@@ -90,12 +90,15 @@ CREATE INDEX IF NOT EXISTS idx_ep_progress_stopped ON public.episode_progress (u
 
 -- Auto-update updated_at
 CREATE OR REPLACE FUNCTION public.set_updated_at()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER 
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
 BEGIN
   NEW.updated_at = NOW();
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$;
 
 CREATE TRIGGER episode_progress_updated_at
   BEFORE UPDATE ON public.episode_progress
@@ -165,6 +168,7 @@ CREATE OR REPLACE FUNCTION public.check_email_exists(p_email TEXT)
 RETURNS BOOLEAN
 LANGUAGE plpgsql
 SECURITY DEFINER -- Runs with elevated privileges to access auth schema
+SET search_path = ''
 AS $$
 BEGIN
   RETURN EXISTS (
@@ -175,7 +179,7 @@ BEGIN
 END;
 $$;
 
--- Restrict execution to service_role and authenticated users only for extra security
+-- Restrict execution to service_role only (called via API route using service client)
 REVOKE ALL ON FUNCTION public.check_email_exists(TEXT) FROM public, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.check_email_exists(TEXT) TO service_role, authenticated;
+GRANT EXECUTE ON FUNCTION public.check_email_exists(TEXT) TO service_role;
 
