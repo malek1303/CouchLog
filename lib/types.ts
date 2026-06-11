@@ -119,6 +119,7 @@ export interface TmdbSeason {
   episode_count: number;
   air_date: string | null;
   poster_path: string | null;
+  vote_average: number;
   episodes?: TmdbEpisode[];
 }
 

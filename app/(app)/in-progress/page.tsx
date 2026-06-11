@@ -563,14 +563,20 @@ function EpisodeList({
   setProgress: React.Dispatch<React.SetStateAction<Record<string, EpisodeProgress>>>;
 }) {
   const [openSeason, setOpenSeason] = useState<number | null>(null);
+  const [loadingSeason, setLoadingSeason] = useState<number | null>(null);
   const [episodeData, setEpisodeData] = useState<Record<number, TmdbEpisode[]>>({});
   const supabase = createClient();
 
   async function loadSeasonEpisodes(seasonNum: number) {
     if (episodeData[seasonNum]) return;
-    const res = await fetch(`/api/tmdb/media/tv/${tmdbId}?season=${seasonNum}`);
-    const data: TmdbSeason = await res.json();
-    setEpisodeData((prev) => ({ ...prev, [seasonNum]: data.episodes ?? [] }));
+    setLoadingSeason(seasonNum);
+    try {
+      const res = await fetch(`/api/tmdb/media/tv/${tmdbId}?season=${seasonNum}`);
+      const data: TmdbSeason = await res.json();
+      setEpisodeData((prev) => ({ ...prev, [seasonNum]: data.episodes ?? [] }));
+    } finally {
+      setLoadingSeason(null);
+    }
   }
 
   async function toggleEpisode(seasonNum: number, epNum: number) {
@@ -618,7 +624,12 @@ function EpisodeList({
               style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'hsl(var(--color-text))' }}
             >
               <div className="flex flex-col items-start gap-1">
-                <span className="font-medium">{season.name}</span>
+                <div className="flex items-center gap-2">
+                  <span className="font-medium">{season.name}</span>
+                  {(season.vote_average ?? 0) > 0 && (
+                    <StarRating rating={season.vote_average} size="sm" />
+                  )}
+                </div>
                 <div className="flex items-center gap-2 mt-1">
                   <div style={{
                     width: 100,
@@ -649,7 +660,11 @@ function EpisodeList({
 
             <div className={`collapsible-grid ${isOpen ? 'expanded' : ''}`}>
               <div className="collapsible-inner" style={{ padding: isOpen ? '0 1rem 1rem' : '0 1rem' }}>
-                {eps.length === 0 ? (
+                {loadingSeason === season.season_number ? (
+                  <div className="flex items-center justify-center py-4">
+                    <Loader2 size={16} className="animate-spin text-subtle" />
+                  </div>
+                ) : eps.length === 0 ? (
                   <p className="text-subtle text-sm pt-2">No episodes found.</p>
                 ) : (
                   eps.map((ep) => (
