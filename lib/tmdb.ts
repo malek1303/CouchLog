@@ -4,6 +4,7 @@
  */
 
 const TMDB_BASE = 'https://api.themoviedb.org/3';
+const TMDB_ORIGIN = 'https://api.themoviedb.org';
 export const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p';
 
 function tmdbHeaders() {
@@ -13,8 +14,27 @@ function tmdbHeaders() {
   };
 }
 
+/**
+ * Validates that a constructed URL still targets the TMDB API.
+ * Prevents SSRF via path traversal, host injection, or protocol manipulation.
+ */
+function assertTmdbUrl(url: URL): void {
+  if (url.origin !== TMDB_ORIGIN) {
+    throw new Error(`SSRF blocked: URL origin "${url.origin}" does not match TMDB API`);
+  }
+  if (!url.pathname.startsWith('/3/')) {
+    throw new Error(`SSRF blocked: URL path "${url.pathname}" escapes the /3/ API prefix`);
+  }
+}
+
 async function tmdbFetch<T>(path: string, revalidate: number = 3600): Promise<T> {
-  const res = await fetch(`${TMDB_BASE}${path}`, {
+  // Build URL via the URL constructor to resolve any path traversal sequences
+  const url = new URL(`${TMDB_BASE}${path}`);
+
+  // Validate the resolved URL still points to TMDB
+  assertTmdbUrl(url);
+
+  const res = await fetch(url.toString(), {
     headers: tmdbHeaders(),
     next: { revalidate }, // cache control
   });
@@ -29,12 +49,21 @@ async function tmdbFetch<T>(path: string, revalidate: number = 3600): Promise<T>
 /** Poster URL helper */
 export function posterUrl(path: string | null, size: 'w185' | 'w342' | 'w500' | 'original' = 'w342'): string {
   if (!path) return '/placeholder-poster.png';
+  // Reject paths containing traversal sequences
+  if (path.includes('..')) return '/placeholder-poster.png';
   return `${TMDB_IMAGE_BASE}/${size}${path}`;
 }
+
+/** Allowed media types for search — used as an allowlist */
+const ALLOWED_SEARCH_TYPES = new Set(['movie', 'tv']);
 
 /** Multi-search (movies + TV shows) */
 export async function searchMedia(query: string, mediaType?: 'movie' | 'tv') {
   if (mediaType) {
+    // Validate mediaType against the allowlist
+    if (!ALLOWED_SEARCH_TYPES.has(mediaType)) {
+      throw new Error(`Invalid media type: ${mediaType}`);
+    }
     return tmdbFetch(`/search/${mediaType}?query=${encodeURIComponent(query)}&include_adult=false`);
   }
   return tmdbFetch(`/search/multi?query=${encodeURIComponent(query)}&include_adult=false`);
@@ -42,21 +71,32 @@ export async function searchMedia(query: string, mediaType?: 'movie' | 'tv') {
 
 /** Full TV show details with seasons list */
 export async function getTvDetails(tmdbId: number) {
-  return tmdbFetch(`/tv/${tmdbId}?append_to_response=external_ids`);
+  const id = Math.floor(tmdbId);
+  if (!Number.isFinite(id) || id <= 0) throw new Error(`Invalid TMDB ID: ${tmdbId}`);
+  return tmdbFetch(`/tv/${id}?append_to_response=external_ids`);
 }
 
 /** Season details including all episodes */
 export async function getTvSeasonDetails(tmdbId: number, seasonNumber: number) {
-  return tmdbFetch(`/tv/${tmdbId}/season/${seasonNumber}`);
+  const id = Math.floor(tmdbId);
+  const season = Math.floor(seasonNumber);
+  if (!Number.isFinite(id) || id <= 0) throw new Error(`Invalid TMDB ID: ${tmdbId}`);
+  if (!Number.isFinite(season) || season < 0) throw new Error(`Invalid season number: ${seasonNumber}`);
+  return tmdbFetch(`/tv/${id}/season/${season}`);
 }
 
 /** Full movie details */
 export async function getMovieDetails(tmdbId: number) {
-  return tmdbFetch(`/movie/${tmdbId}`);
+  const id = Math.floor(tmdbId);
+  if (!Number.isFinite(id) || id <= 0) throw new Error(`Invalid TMDB ID: ${tmdbId}`);
+  return tmdbFetch(`/movie/${id}`);
 }
 
 /** Episodes airing today for a given show — used by the cron route */
 export async function getEpisodesAiringToday(tmdbId: number, numberOfSeasons: number) {
+  const id = Math.floor(tmdbId);
+  if (!Number.isFinite(id) || id <= 0) throw new Error(`Invalid TMDB ID: ${tmdbId}`);
+
   const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD UTC
   const results: { season: number; episode: number; name: string }[] = [];
 
@@ -70,7 +110,7 @@ export async function getEpisodesAiringToday(tmdbId: number, numberOfSeasons: nu
     seasonsToCheck.map(async (seasonNum) => {
       try {
         const data = await tmdbFetch<{ episodes: { episode_number: number; name: string; air_date: string | null }[] }>(
-          `/tv/${tmdbId}/season/${seasonNum}`
+          `/tv/${id}/season/${seasonNum}`
         );
         data.episodes?.forEach((ep) => {
           if (ep.air_date === today) {
@@ -86,8 +126,18 @@ export async function getEpisodesAiringToday(tmdbId: number, numberOfSeasons: nu
   return results;
 }
 
+/** Allowed trending types and time windows — used as allowlists */
+const ALLOWED_TRENDING_TYPES = new Set(['movie', 'tv']);
+const ALLOWED_TIME_WINDOWS = new Set(['day', 'week']);
+
 /** Get trending media with a custom 3-day revalidate time (259200 seconds) */
 export async function getTrendingMedia(mediaType: 'movie' | 'tv', timeWindow: 'day' | 'week' = 'week') {
+  if (!ALLOWED_TRENDING_TYPES.has(mediaType)) {
+    throw new Error(`Invalid media type: ${mediaType}`);
+  }
+  if (!ALLOWED_TIME_WINDOWS.has(timeWindow)) {
+    throw new Error(`Invalid time window: ${timeWindow}`);
+  }
   return tmdbFetch(`/trending/${mediaType}/${timeWindow}`, 259200);
 }
 
