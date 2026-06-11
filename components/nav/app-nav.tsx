@@ -15,7 +15,6 @@ const NAV_ITEMS = [
   { href: '/home',          label: 'Home',        icon: Home },
   { href: '/my-list',       label: 'Watchlist',   icon: List },
   { href: '/in-progress',   label: 'In Progress', icon: PlayCircle },
-  { href: '/about',         label: 'About Us',    icon: Info },
 ];
 
 interface AppNavProps {
@@ -114,6 +113,20 @@ export default function AppNav({ userEmail }: AppNavProps) {
             Notifications
             <NotificationBell compact />
           </Link>
+
+          {/* About Us */}
+          <Link
+            href="/about"
+            className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all"
+            style={{
+              background: pathname.startsWith('/about') ? 'hsl(var(--color-brand) / 0.15)' : 'transparent',
+              color: pathname.startsWith('/about') ? 'hsl(var(--color-brand))' : 'hsl(var(--color-text-muted))',
+              border: pathname.startsWith('/about') ? '1px solid hsl(var(--color-brand) / 0.25)' : '1px solid transparent',
+            }}
+          >
+            <Info size={17} />
+            About Us
+          </Link>
         </nav>
 
         {/* User footer */}
@@ -207,7 +220,7 @@ export default function AppNav({ userEmail }: AppNavProps) {
             </button>
 
             <nav className="space-y-1 flex-1">
-              {[...NAV_ITEMS, { href: '/notifications', label: 'Notifications', icon: Bell }].map(
+              {[...NAV_ITEMS, { href: '/notifications', label: 'Notifications', icon: Bell }, { href: '/about', label: 'About Us', icon: Info }].map(
                 ({ href, label, icon: Icon }) => {
                   const active = pathname.startsWith(href);
                   return (
