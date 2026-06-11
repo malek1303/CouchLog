@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json();
-  const { tmdb_id, media_type, title, poster_path, overview, status } = body;
+  const { tmdb_id, media_type, title, poster_path, overview, status, vote_average, number_of_seasons } = body;
 
   if (!tmdb_id || !media_type || !title) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
   const { data, error } = await supabase
     .from('media')
     .upsert(
-      { tmdb_id, media_type, title, poster_path, overview, status },
+      { tmdb_id, media_type, title, poster_path, overview, status, vote_average: vote_average ?? 0, number_of_seasons: number_of_seasons ?? null },
       { onConflict: 'tmdb_id,media_type', ignoreDuplicates: false }
     )
     .select('id')

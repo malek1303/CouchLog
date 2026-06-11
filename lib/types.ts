@@ -14,6 +14,8 @@ export interface Media {
   poster_path: string | null;
   overview: string | null;
   status: string | null;
+  vote_average: number;
+  number_of_seasons: number | null;
   created_at: string;
 }
 
@@ -107,6 +109,7 @@ export interface TmdbEpisode {
   air_date: string | null;
   runtime: number | null;
   still_path: string | null;
+  vote_average: number;
 }
 
 export interface TmdbSeason {

@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Image from 'next/image';
 import { Search as SearchIcon, X, Plus, Check, Loader2, Film, Tv } from 'lucide-react';
+import StarRating from '@/components/ui/star-rating';
 import { TmdbSearchResult } from '@/lib/types';
 import { createClient } from '@/lib/supabase/client';
 import { posterUrl } from '@/lib/tmdb';
@@ -144,6 +145,7 @@ export default function GlobalSearch({ isOpen, onOpen, onClose }: GlobalSearchPr
           poster_path: item.poster_path,
           overview: item.overview,
           status: item.status ?? null,
+          vote_average: item.vote_average ?? 0,
         }),
       });
 
@@ -315,6 +317,7 @@ export default function GlobalSearch({ isOpen, onOpen, onClose }: GlobalSearchPr
                           {item.media_type === 'tv' ? 'TV' : 'FILM'}
                         </span>
                         {year && <span className="text-[11px] text-muted">{year}</span>}
+                        <StarRating rating={item.vote_average} size="sm" />
                       </div>
                       <h4 className="text-sm font-semibold truncate mt-0.5" style={{ color: 'hsl(var(--color-text))' }}>{title}</h4>
                       <p className="text-xs text-subtle truncate mt-0.5 leading-tight">{item.overview || 'No description available.'}</p>

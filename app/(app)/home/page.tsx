@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import Image from 'next/image';
 import { Search as SearchIcon, X, Plus, Check, Loader2, Film, Tv } from 'lucide-react';
+import StarRating from '@/components/ui/star-rating';
 import { TmdbSearchResult } from '@/lib/types';
 import { createClient } from '@/lib/supabase/client';
 import { posterUrl } from '@/lib/tmdb';
@@ -133,6 +134,7 @@ export default function HomePage() {
           poster_path: item.poster_path,
           overview: item.overview,
           status: item.status ?? null,
+          vote_average: item.vote_average ?? 0,
         }),
       });
 
@@ -212,7 +214,10 @@ export default function HomePage() {
         {/* Info */}
         <div style={{ padding: '0.75rem' }}>
           <p className="text-sm font-semibold leading-tight truncate" title={title}>{title}</p>
-          {year && <p className="text-subtle text-xs mt-0.5">{year}</p>}
+          <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+            {year && <span className="text-subtle text-xs">{year}</span>}
+            <StarRating rating={item.vote_average} size="sm" />
+          </div>
           {inList ? (
             <button
               disabled

@@ -5,6 +5,7 @@ import Image from 'next/image';
 import {
   Clock, Loader2, CheckCircle2, Tv, Film, ChevronDown, ChevronUp, Check
 } from 'lucide-react';
+import StarRating from '@/components/ui/star-rating';
 import { createClient } from '@/lib/supabase/client';
 import { Watchlist, EpisodeProgress, TmdbTvDetails, TmdbSeason, TmdbEpisode } from '@/lib/types';
 import { posterUrl } from '@/lib/tmdb';
@@ -400,9 +401,15 @@ function InProgressCard({ item, onProgressUpdate, onMarkCompleted }: InProgressC
                     })()}
                   </span>
 
+                  {/* Movie Rating */}
+                  {!isTv && media.vote_average > 0 && (
+                    <StarRating rating={media.vote_average} size="sm" />
+                  )}
+
                   {/* TV Overall Progress Bar in Card Header */}
                   {isTv && !loadingTv && showData && (
                     <div className="flex items-center gap-1.5 ml-1" style={{ display: 'inline-flex' }} onClick={(e) => e.stopPropagation()}>
+                      <StarRating rating={showData.vote_average} size="sm" />
                       <div style={{
                         width: 70,
                         height: 5,
@@ -717,7 +724,15 @@ function EpisodeRow({
           {episode.name}
         </p>
         {episode.air_date && (
-          <p className="text-xs text-subtle">{new Date(episode.air_date).toLocaleDateString()}</p>
+          <p className="text-xs text-subtle inline-flex items-center gap-1.5">
+            {new Date(episode.air_date).toLocaleDateString()}
+            <StarRating rating={episode.vote_average} size="sm" />
+          </p>
+        )}
+        {!episode.air_date && episode.vote_average > 0 && (
+          <div className="mt-0.5">
+            <StarRating rating={episode.vote_average} size="sm" />
+          </div>
         )}
       </div>
 

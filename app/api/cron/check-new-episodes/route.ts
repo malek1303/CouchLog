@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
     // 1. Get all unique TV shows across all watchlists
     const { data: watchlistItems, error: watchlistError } = await supabase
       .from('watchlist')
-      .select('user_id, media_id, media!inner(id, tmdb_id, title, media_type)')
+      .select('user_id, media_id, media!inner(id, tmdb_id, title, media_type, number_of_seasons)')
       .eq('media.media_type', 'tv')
       .neq('status', 'completed')
       .neq('status', 'dropped');
@@ -35,29 +35,28 @@ export async function POST(request: NextRequest) {
     }
 
     // 2. Deduplicate by media_id to avoid redundant TMDB calls
-    const mediaMap = new Map<string, { tmdb_id: number; title: string; users: string[] }>();
+    const mediaMap = new Map<string, { tmdb_id: number; title: string; number_of_seasons: number | null; users: string[] }>();
     for (const item of watchlistItems) {
-      const media = item.media as unknown as { id: string; tmdb_id: number; title: string };
+      const media = item.media as unknown as { id: string; tmdb_id: number; title: string; number_of_seasons: number | null };
       if (!mediaMap.has(item.media_id)) {
-        mediaMap.set(item.media_id, { tmdb_id: media.tmdb_id, title: media.title, users: [] });
+        mediaMap.set(item.media_id, { tmdb_id: media.tmdb_id, title: media.title, number_of_seasons: media.number_of_seasons, users: [] });
       }
       mediaMap.get(item.media_id)!.users.push(item.user_id);
     }
 
     // 3. Check each show for episodes airing today
-    for (const [mediaId, { tmdb_id, title, users }] of mediaMap) {
+    for (const [mediaId, { tmdb_id, title, number_of_seasons, users }] of mediaMap) {
       stats.processed++;
       try {
-        // Get show details to know the number of seasons
-        const showRes = await fetch(
-          `${process.env.NEXT_PUBLIC_SUPABASE_URL?.replace('supabase.co', '') || ''}${process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000'}/api/tmdb/media/tv/${tmdb_id}`,
-          { headers: { 'x-cron-secret': process.env.CRON_SECRET! } }
-        );
+        // Fallback to fetch if number_of_seasons is null (from before migration)
+        let seasonsCount = number_of_seasons;
+        if (seasonsCount === null) {
+          const { getTvDetails: getDetails } = await import('@/lib/tmdb');
+          const showData = await getDetails(tmdb_id) as { number_of_seasons: number };
+          seasonsCount = showData.number_of_seasons;
+        }
 
-        // Directly call TMDB helpers instead of going through Next.js routes
-        const { getTvDetails: getDetails } = await import('@/lib/tmdb');
-        const showData = await getDetails(tmdb_id) as { number_of_seasons: number };
-        const airingEpisodes = await getEpisodesAiringToday(tmdb_id, showData.number_of_seasons);
+        const airingEpisodes = await getEpisodesAiringToday(tmdb_id, seasonsCount);
 
         if (airingEpisodes.length === 0) continue;
 

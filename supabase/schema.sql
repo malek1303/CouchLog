@@ -12,6 +12,8 @@ CREATE TABLE IF NOT EXISTS public.media (
   poster_path TEXT,
   overview    TEXT,
   status      TEXT,
+  vote_average REAL DEFAULT 0,
+  number_of_seasons INTEGER,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (tmdb_id, media_type)
 );

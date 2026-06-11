@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { Loader2, Film, Trash2, MoreHorizontal, Play } from 'lucide-react';
+import StarRating from '@/components/ui/star-rating';
 import { createClient } from '@/lib/supabase/client';
 import { Watchlist, WatchlistStatus } from '@/lib/types';
 import { posterUrl } from '@/lib/tmdb';
@@ -77,6 +78,7 @@ export default function MyListPage() {
           <WatchlistItem
             key={item.id}
             item={item}
+            rating={item.media?.vote_average ?? 0}
             onStatusChange={updateStatus}
             onRemove={removeFromList}
           />
@@ -89,10 +91,12 @@ export default function MyListPage() {
 // ── WatchlistItem ──────────────────────────────────────────────
 function WatchlistItem({
   item,
+  rating,
   onStatusChange,
   onRemove,
 }: {
   item: Watchlist;
+  rating: number;
   onStatusChange: (id: string, status: WatchlistStatus) => void;
   onRemove: (id: string) => void;
 }) {
@@ -144,6 +148,7 @@ function WatchlistItem({
                 }}>
                   {isTv ? 'TV' : 'Movie'}
                 </span>
+                <StarRating rating={rating} size="sm" />
               </div>
             </div>
 
