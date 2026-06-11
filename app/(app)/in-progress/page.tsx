@@ -574,6 +574,8 @@ function EpisodeList({
       const res = await fetch(`/api/tmdb/media/tv/${tmdbId}?season=${seasonNum}`);
       const data: TmdbSeason = await res.json();
       setEpisodeData((prev) => ({ ...prev, [seasonNum]: data.episodes ?? [] }));
+    } catch {
+      // Ignore fetch errors to avoid UI crashes
     } finally {
       setLoadingSeason(null);
     }
@@ -600,6 +602,26 @@ function EpisodeList({
     setProgress((prev) => ({ ...prev, [key]: data }));
   }
 
+  // Prefetch the active season (the highest season the user has watched, or season 1)
+  useEffect(() => {
+    const watchedEps = Object.values(progress).filter(p => p.watched);
+    let activeSeason = 1;
+    if (watchedEps.length > 0) {
+      activeSeason = Math.max(...watchedEps.map(p => p.season_number));
+    }
+    // Check if the user is completely done with the active season, in which case prefetch the next one
+    const activeSeasonEps = watchedEps.filter(p => p.season_number === activeSeason);
+    const seasonData = showData.seasons.find(s => s.season_number === activeSeason);
+    if (seasonData && seasonData.episode_count === activeSeasonEps.length) {
+      const nextSeason = showData.seasons.find(s => s.season_number === activeSeason + 1);
+      if (nextSeason) activeSeason = nextSeason.season_number;
+    }
+    
+    // Fire and forget prefetch
+    loadSeasonEpisodes(activeSeason).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const realSeasons = showData.seasons.filter((s) => s.season_number > 0);
 
   return (
@@ -616,9 +638,13 @@ function EpisodeList({
         return (
           <div key={season.season_number} style={{ borderBottom: '1px solid hsl(var(--color-border) / 0.5)' }}>
             <button
-              onClick={async () => {
-                if (!isOpen) await loadSeasonEpisodes(season.season_number);
-                setOpenSeason(isOpen ? null : season.season_number);
+              onClick={() => {
+                if (!isOpen) {
+                  setOpenSeason(season.season_number);
+                  loadSeasonEpisodes(season.season_number).catch(() => {});
+                } else {
+                  setOpenSeason(null);
+                }
               }}
               className="w-full flex items-center justify-between px-4 py-3 text-sm transition-all hover:bg-white/[0.02]"
               style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'hsl(var(--color-text))' }}
