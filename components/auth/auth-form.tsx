@@ -291,9 +291,16 @@ export default function AuthForm({ mode }: AuthFormProps) {
 
             {/* Password */}
             <div>
-              <label htmlFor="password" className="block text-sm font-medium mb-1.5" style={{ color: 'hsl(var(--color-text-muted))' }}>
-                {mode === 'register' ? 'Choose Password' : 'Password'}
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label htmlFor="password" className="block text-sm font-medium" style={{ color: 'hsl(var(--color-text-muted))' }}>
+                  {mode === 'register' ? 'Choose Password' : 'Password'}
+                </label>
+                {mode === 'login' && (
+                  <Link href="/forgot-password" className="text-xs font-semibold hover:underline" style={{ color: 'hsl(var(--color-brand))' }}>
+                    Forgot Password?
+                  </Link>
+                )}
+              </div>
               <div className="relative">
                 <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'hsl(var(--color-text-subtle))' }} />
                 <input
