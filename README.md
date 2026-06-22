@@ -1,10 +1,10 @@
-# 🛋️ CouchLog
+#  CouchLog
 
 CouchLog is a premium, comprehensive TV show and movie tracking platform. Built with an API-first architecture, CouchLog provides users with a beautifully optimized, fast, and visual dashboard to manage their personal watchlists, track exact viewing progress, and receive new episode notifications.
 
 ---
 
-## 🎯 Overall Goal & Mobile-First Vision
+##  Overall Goal & Mobile-First Vision
 
 CouchLog is designed from the ground up to be **API-first**. 
 - **Decoupled Data Layer**: The PostgreSQL database (Supabase) and authentication logic are decoupled from Next.js server-side rendering.
@@ -12,35 +12,35 @@ CouchLog is designed from the ground up to be **API-first**.
 
 ---
 
-## ✨ Features & Capabilities
+##  Features & Capabilities
 
-### 1. 🔍 Instant Search & Media Discovery
+### 1.  Instant Search & Media Discovery
 * Fully typed multi-search powered by **The Movie Database (TMDB) API**.
 * Intuitively badges movies vs. TV shows.
 * Inline "Add to List" mechanism with automatic local caching.
 
-### 2. 📋 Watchlist Management ("My List")
+### 2.  Watchlist Management ("My List")
 * Complete tracking dashboard split by media status (`To Watch`, `Watching`, `Completed`, `Dropped`).
 * **TV Show Accordion**: Lazy-loads seasons directly from TMDB on expand.
 * **Interactive Header Toggle**: Click anywhere on a watch list item header to smoothly toggle the season accordion.
 * **Gradient Season Progress Bars**: Sleek, animated HSL-tailored progress tracks displaying season completion percentages dynamically as you check off episodes.
 
-### 3. ⏱️ Stopped-At Timestamp Tracking
+### 3.  Stopped-At Timestamp Tracking
 * High-fidelity, frame-perfect timestamp logger for both movie progress and specific episodes.
 * Time-validated modal supporting double-digit format checking (`HH:MM:SS` or `MM:SS`).
 * Instant keyboard shortcut listener (`Enter` to save, `Escape` to close).
 
-### 4. 🍿 "In Progress" Dashboard
+### 4.  "In Progress" Dashboard
 * Dedicated hub presenting all currently paused TV episodes and movies.
 * Includes direct "Update Timestamp" modals and "Mark Watched" operations.
 
-### 5. 🔔 Automated Air Date Notifications
+### 5.  Automated Air Date Notifications
 * Real-time notifications bell inside a sleek desktop navigation sidebar.
 * Protected CRON schedule endpoint (`/api/cron/check-new-episodes`) that scans active watchlists daily, matching upcoming episode air dates against today's date to alert users.
 
 ---
 
-## 🛠️ Technology Stack
+##  Technology Stack
 
 * **Core Framework**: [Next.js (App Router)](https://nextjs.org) with React Server Components & TypeScript
 * **Database & Auth**: [Supabase](https://supabase.com) (PostgreSQL) with Row Level Security (RLS) policies
@@ -50,7 +50,7 @@ CouchLog is designed from the ground up to be **API-first**.
 
 ---
 
-## 🗄️ Database Schema & Security
+##  Database Schema & Security
 
 The database operates securely using Supabase Auth and strict Postgres Row Level Security (RLS). Below is the core architecture:
 
@@ -62,7 +62,7 @@ The database operates securely using Supabase Auth and strict Postgres Row Level
 
 ---
 
-## 🚀 Getting Started
+##  Getting Started
 
 ### 1. Prerequisites
 Ensure you have Node.js (v18+) and a Supabase account.
