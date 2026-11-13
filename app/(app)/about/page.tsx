@@ -28,7 +28,7 @@ export default function AboutPage() {
               CouchLog was born out of a simple need: a desire for a unified, modern, and beautiful interface to organize watchlists and track progress without dealing with bloated trackers.
             </p>
             <p className="text-sm text-subtle leading-relaxed">
-              Whether it's checking off seasons, managing TV show episodes, or setting precise timestamp pause-points down to the second, CouchLog is designed to make sure you never lose your spot on the couch again.
+              Whether it&apos;s checking off seasons, managing TV show episodes, or setting precise timestamp pause-points down to the second, CouchLog is designed to make sure you never lose your spot on the couch again.
             </p>
           </div>
 
@@ -42,7 +42,7 @@ export default function AboutPage() {
             </h2>
             <div className="space-y-4">
               <p className="text-sm text-subtle leading-relaxed">
-                Hi, I'm <strong className="text-text">Malek Mahdy</strong>. I am an Electronics and Communications Engineering student based in Egypt, deeply passionate about Embedded Systems, low-level driver development, and bare-metal programming.
+                Hi, I&apos;m <strong className="text-text">Malek Mahdy</strong>. I am an Electronics and Communications Engineering student based in Egypt, deeply passionate about Embedded Systems, low-level driver development, and bare-metal programming.
               </p>
 
               {/* Retro Terminal Shell Mockup */}
@@ -61,7 +61,7 @@ export default function AboutPage() {
                   <span className="text-[10px] text-muted ml-2">malek@archlinux:~</span>
                 </div>
                 <div>
-                  <span className="text-emerald-400 font-semibold">malek@archlinux</span>:<span className="text-blue-400">~</span>$ neofetch --os "Arch Linux"<br />
+                  <span className="text-emerald-400 font-semibold">malek@archlinux</span>:<span className="text-blue-400">~</span>$ neofetch --os &quot;Arch Linux&quot;<br />
                   <span className="font-bold" style={{ color: 'hsl(var(--color-brand))' }}>OS:</span> Arch Linux (I use Arch, btw 🐧)<br />
                   <span className="font-bold" style={{ color: 'hsl(var(--color-accent))' }}>Main Focus:</span> Embedded Systems & AVR Microcontrollers<br />
                   <span className="font-bold" style={{ color: 'hsl(var(--color-success))' }}>Community:</span> Head of the Embedded Systems Committee at IEEE MUST SB<br />
@@ -99,7 +99,7 @@ export default function AboutPage() {
 
           {/* Let's Connect */}
           <div className="card p-6">
-            <h2 className="text-sm font-bold uppercase tracking-wider text-muted mb-4">Let's Connect</h2>
+            <h2 className="text-sm font-bold uppercase tracking-wider text-muted mb-4">Let&apos;s Connect</h2>
             <div className="space-y-3">
               <a
                 href="mailto:malekmahdy@ieee.org"

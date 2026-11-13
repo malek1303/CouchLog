@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Tv, Mail, Loader2, AlertTriangle, Check, ArrowLeft } from 'lucide-react';
 
@@ -63,9 +62,9 @@ export default function ForgotPasswordPage() {
         </div>
 
         {/* Card */}
-        <div className="card p-8 relative overflow-hidden" style={{ borderRadius: '1.25rem' }}>
+        <div className="card p-5 sm:p-8 relative overflow-hidden" style={{ borderRadius: '1.25rem' }}>
           <h2 className="text-xl font-semibold mb-2">Forgot Password</h2>
-          <p className="text-sm text-subtle mb-6">Enter your email address and we'll send you a link to reset your password.</p>
+          <p className="text-sm text-subtle mb-6">Enter your email address and we&apos;ll send you a link to reset your password.</p>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Email */}

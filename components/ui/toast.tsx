@@ -14,14 +14,16 @@ const ToastViewport = React.forwardRef<
     className={className}
     style={{
       position: 'fixed',
-      bottom: '1.5rem',
-      right: '1.5rem',
+      bottom: '1rem',
+      right: '1rem',
+      left: '1rem',
+      marginLeft: 'auto',
       zIndex: 9999,
       display: 'flex',
       flexDirection: 'column',
       gap: '0.5rem',
       maxWidth: '360px',
-      width: '100%',
+      width: 'calc(100vw - 2rem)',
     }}
     {...props}
   />

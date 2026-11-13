@@ -1,9 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { Tv, Lock, Loader2, AlertTriangle, Check, Eye, EyeOff } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 
 function getPasswordStrength(pwd: string) {
   if (!pwd) return { score: 0, label: '', color: 'transparent', checks: [] };
@@ -45,15 +47,37 @@ export default function ResetPasswordPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [checkingSession, setCheckingSession] = useState(true);
+  const [hasSession, setHasSession] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
+
   const router = useRouter();
   const supabase = createClient();
+  const { toast } = useToast();
+
+  useEffect(() => {
+    let mounted = true;
+    async function checkSession() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!mounted) return;
+      setHasSession(Boolean(user));
+      setCheckingSession(false);
+    }
+    checkSession();
+    return () => { mounted = false; };
+  }, [supabase]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError(null);
+
+    const { score } = getPasswordStrength(password);
+    if (password.length < 8 || score < 3) {
+      setError('Please choose a stronger password (at least 8 characters and 3 of 4 criteria met).');
+      setLoading(false);
+      return;
+    }
 
     if (password !== confirmPassword) {
       setError('Passwords do not match.');
@@ -67,6 +91,7 @@ export default function ResetPasswordPage() {
       setError(error.message);
       setLoading(false);
     } else {
+      toast({ title: 'Password updated!', description: 'Your password has been changed successfully.' });
       router.push('/home');
       router.refresh();
     }
@@ -102,153 +127,173 @@ export default function ResetPasswordPage() {
         </div>
 
         {/* Card */}
-        <div className="card p-8 relative overflow-hidden" style={{ borderRadius: '1.25rem' }}>
+        <div className="card p-5 sm:p-8 relative overflow-hidden" style={{ borderRadius: '1.25rem' }}>
           <h2 className="text-xl font-semibold mb-6">Reset Password</h2>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Password */}
-            <div>
-              <label htmlFor="password" className="block text-sm font-medium mb-1.5" style={{ color: 'hsl(var(--color-text-muted))' }}>
-                New Password
-              </label>
-              <div className="relative">
-                <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'hsl(var(--color-text-subtle))' }} />
-                <input
-                  id="password"
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  required
-                  minLength={6}
-                  style={{ paddingLeft: '2.5rem', paddingRight: '2.75rem' }}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2"
-                  style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'hsl(var(--color-text-subtle))' }}
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
-                >
-                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-              </div>
-
-              {/* Password Strength Meter */}
-              {password.length > 0 && (() => {
-                const { score, label, color, checks } = getPasswordStrength(password);
-                return (
-                  <div className="mt-3 space-y-2 animate-slide-up">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-muted">Password Strength:</span>
-                      <span className="font-semibold" style={{ color }}>{label}</span>
-                    </div>
-                    <div className="flex gap-1.5 h-1.5">
-                      {[1, 2, 3, 4].map((index) => (
-                        <div
-                          key={index}
-                          className="flex-1 h-full rounded-full transition-all duration-300"
-                          style={{
-                            background: index <= score ? color : 'hsl(var(--color-border))',
-                          }}
-                        />
-                      ))}
-                    </div>
-                    <div className="grid grid-cols-2 gap-x-2 gap-y-1 pt-1.5 border-t" style={{ borderColor: 'hsl(var(--color-border) / 0.4)' }}>
-                      {checks.map((check, idx) => (
-                        <div key={idx} className="flex items-center gap-1 text-[11px] transition-all">
-                          {check.met ? (
-                            <Check size={11} className="text-[hsl(var(--color-success))]" />
-                          ) : (
-                            <div className="w-2.5 h-2.5 rounded-full border border-dashed" style={{ borderColor: 'hsl(var(--color-text-subtle))' }} />
-                          )}
-                          <span style={{ color: check.met ? 'hsl(var(--color-text))' : 'hsl(var(--color-text-subtle))' }}>
-                            {check.label}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })()}
+          {checkingSession ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 size={24} className="animate-spin" style={{ color: 'hsl(var(--color-brand))' }} />
             </div>
-
-            {/* Confirm Password */}
-            <div className="animate-slide-up">
-              <label htmlFor="confirmPassword" className="block text-sm font-medium mb-1.5" style={{ color: 'hsl(var(--color-text-muted))' }}>
-                Confirm Password
-              </label>
-              <div className="relative">
-                <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'hsl(var(--color-text-subtle))' }} />
-                <input
-                  id="confirmPassword"
-                  type={showConfirmPassword ? 'text' : 'password'}
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="••••••••"
-                  required
-                  style={{
-                    paddingLeft: '2.5rem',
-                    paddingRight: '2.75rem',
-                    borderColor: confirmPassword.length > 0
-                      ? (password === confirmPassword ? 'hsl(var(--color-success))' : 'hsl(var(--color-error))')
-                      : undefined,
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2"
-                  style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'hsl(var(--color-text-subtle))' }}
-                  aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
-                >
-                  {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-              </div>
-
-              {/* Match indicator */}
-              {confirmPassword.length > 0 && (
-                <div className="mt-2 text-xs flex items-center gap-1.5 animate-slide-up">
-                  {password === confirmPassword ? (
-                    <>
-                      <Check size={14} className="text-[hsl(var(--color-success))]" />
-                      <span style={{ color: 'hsl(var(--color-success))' }}>Passwords match</span>
-                    </>
-                  ) : (
-                    <>
-                      <AlertTriangle size={14} className="text-[hsl(var(--color-error))]" />
-                      <span style={{ color: 'hsl(var(--color-error))' }}>Passwords do not match</span>
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Error message */}
-            {error && (
+          ) : !hasSession ? (
+            <div className="space-y-4">
               <div
-                className="text-sm p-3 rounded-lg flex items-start gap-1.5 animate-slide-up"
+                className="text-sm p-3 rounded-lg flex items-start gap-1.5"
                 style={{ background: 'hsl(var(--color-error) / 0.1)', color: 'hsl(var(--color-error))', border: '1px solid hsl(var(--color-error) / 0.2)' }}
                 role="alert"
               >
                 <AlertTriangle size={16} className="shrink-0 mt-0.5" />
-                <span>{error}</span>
+                <span>Your password reset session is missing or has expired. Please request a new reset link.</span>
               </div>
-            )}
+              <Link href="/forgot-password" className="btn btn-primary w-full">
+                Request New Reset Link
+              </Link>
+            </div>
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-4">
+              {/* Password */}
+              <div>
+                <label htmlFor="password" className="block text-sm font-medium mb-1.5" style={{ color: 'hsl(var(--color-text-muted))' }}>
+                  New Password
+                </label>
+                <div className="relative">
+                  <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'hsl(var(--color-text-subtle))' }} />
+                  <input
+                    id="password"
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    required
+                    minLength={8}
+                    style={{ paddingLeft: '2.5rem', paddingRight: '2.75rem' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2"
+                    style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'hsl(var(--color-text-subtle))' }}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
 
-            <button
-              type="submit"
-              disabled={loading || (confirmPassword.length > 0 && password !== confirmPassword)}
-              className="btn btn-primary w-full mt-2"
-              style={{ height: '2.875rem' }}
-            >
-              {loading ? (
-                <Loader2 size={18} className="animate-spin" />
-              ) : (
-                'Update Password'
+                {/* Password Strength Meter */}
+                {password.length > 0 && (() => {
+                  const { score, label, color, checks } = getPasswordStrength(password);
+                  return (
+                    <div className="mt-3 space-y-2 animate-slide-up">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-muted">Password Strength:</span>
+                        <span className="font-semibold" style={{ color }}>{label}</span>
+                      </div>
+                      <div className="flex gap-1.5 h-1.5">
+                        {[1, 2, 3, 4].map((index) => (
+                          <div
+                            key={index}
+                            className="flex-1 h-full rounded-full transition-all duration-300"
+                            style={{
+                              background: index <= score ? color : 'hsl(var(--color-border))',
+                            }}
+                          />
+                        ))}
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-2 gap-y-1 pt-1.5 border-t" style={{ borderColor: 'hsl(var(--color-border) / 0.4)' }}>
+                        {checks.map((check, idx) => (
+                          <div key={idx} className="flex items-center gap-1 text-[11px] transition-all">
+                            {check.met ? (
+                              <Check size={11} className="text-[hsl(var(--color-success))]" />
+                            ) : (
+                              <div className="w-2.5 h-2.5 rounded-full border border-dashed" style={{ borderColor: 'hsl(var(--color-text-subtle))' }} />
+                            )}
+                            <span style={{ color: check.met ? 'hsl(var(--color-text))' : 'hsl(var(--color-text-subtle))' }}>
+                              {check.label}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Confirm Password */}
+              <div className="animate-slide-up">
+                <label htmlFor="confirmPassword" className="block text-sm font-medium mb-1.5" style={{ color: 'hsl(var(--color-text-muted))' }}>
+                  Confirm Password
+                </label>
+                <div className="relative">
+                  <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'hsl(var(--color-text-subtle))' }} />
+                  <input
+                    id="confirmPassword"
+                    type={showConfirmPassword ? 'text' : 'password'}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="••••••••"
+                    required
+                    style={{
+                      paddingLeft: '2.5rem',
+                      paddingRight: '2.75rem',
+                      borderColor: confirmPassword.length > 0
+                        ? (password === confirmPassword ? 'hsl(var(--color-success))' : 'hsl(var(--color-error))')
+                        : undefined,
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2"
+                    style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'hsl(var(--color-text-subtle))' }}
+                    aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+
+                {/* Match indicator */}
+                {confirmPassword.length > 0 && (
+                  <div className="mt-2 text-xs flex items-center gap-1.5 animate-slide-up">
+                    {password === confirmPassword ? (
+                      <>
+                        <Check size={14} className="text-[hsl(var(--color-success))]" />
+                        <span style={{ color: 'hsl(var(--color-success))' }}>Passwords match</span>
+                      </>
+                    ) : (
+                      <>
+                        <AlertTriangle size={14} className="text-[hsl(var(--color-error))]" />
+                        <span style={{ color: 'hsl(var(--color-error))' }}>Passwords do not match</span>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Error message */}
+              {error && (
+                <div
+                  className="text-sm p-3 rounded-lg flex items-start gap-1.5 animate-slide-up"
+                  style={{ background: 'hsl(var(--color-error) / 0.1)', color: 'hsl(var(--color-error))', border: '1px solid hsl(var(--color-error) / 0.2)' }}
+                  role="alert"
+                >
+                  <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+                  <span>{error}</span>
+                </div>
               )}
-            </button>
-          </form>
+
+              <button
+                type="submit"
+                disabled={loading || (confirmPassword.length > 0 && password !== confirmPassword)}
+                className="btn btn-primary w-full mt-2"
+                style={{ height: '2.875rem' }}
+              >
+                {loading ? (
+                  <Loader2 size={18} className="animate-spin" />
+                ) : (
+                  'Update Password'
+                )}
+              </button>
+            </form>
+          )}
         </div>
       </div>
     </div>

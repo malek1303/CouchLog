@@ -10,10 +10,7 @@ import { posterUrl } from '@/lib/tmdb';
 import { useToast } from '@/hooks/use-toast';
 
 const RecommendationSkeleton = () => (
-  <div
-    className="grid gap-4"
-    style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}
-  >
+  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
     {Array.from({ length: 6 }).map((_, i) => (
       <div key={i} className="card" style={{ borderRadius: '0.875rem', overflow: 'hidden', padding: 0 }}>
         <div className="skeleton" style={{ paddingBottom: '150%', width: '100%', borderRadius: 0 }} />
@@ -41,16 +38,17 @@ export default function HomePage() {
   const supabase = createClient();
   const { toast } = useToast();
 
-  // Load user's existing watchlist media tmdb_ids
+  // Load user's existing watchlist media tmdb_ids and keep synced with GlobalSearch/other tabs
   useEffect(() => {
+    let mounted = true;
     async function loadWatchlist() {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!user || !mounted) return;
       const { data } = await supabase
         .from('watchlist')
         .select('media!inner(tmdb_id, media_type)')
         .eq('user_id', user.id);
-      if (data) {
+      if (data && mounted) {
         const ids = new Set(
           data.map((w) => {
             const m = w.media as unknown as { tmdb_id: number; media_type: string };
@@ -61,6 +59,12 @@ export default function HomePage() {
       }
     }
     loadWatchlist();
+    const handleWatchlistUpdate = () => { loadWatchlist(); };
+    window.addEventListener('couchlog:watchlist-updated', handleWatchlistUpdate);
+    return () => {
+      mounted = false;
+      window.removeEventListener('couchlog:watchlist-updated', handleWatchlistUpdate);
+    };
   }, [supabase]);
 
   // Load trending recommendations
@@ -73,12 +77,12 @@ export default function HomePage() {
           fetch('/api/tmdb/trending?type=tv'),
         ]);
         if (moviesRes.ok && tvRes.ok) {
-          const moviesData = await moviesRes.json();
-          const tvData = await tvRes.json();
-          
+          const moviesData = (await moviesRes.json()) as { results?: TmdbSearchResult[] };
+          const tvData = (await tvRes.json()) as { results?: TmdbSearchResult[] };
+
           // Ensure media_type is set correctly
-          const movies = (moviesData.results ?? []).map((m: any) => ({ ...m, media_type: 'movie' }));
-          const tvShows = (tvData.results ?? []).map((t: any) => ({ ...t, media_type: 'tv' }));
+          const movies: TmdbSearchResult[] = (moviesData.results ?? []).map((m) => ({ ...m, media_type: 'movie' }));
+          const tvShows: TmdbSearchResult[] = (tvData.results ?? []).map((t) => ({ ...t, media_type: 'tv' }));
 
           setTrendingMovies(movies.slice(0, 10)); // Top 10 movies
           setTrendingTv(tvShows.slice(0, 10)); // Top 10 TV shows
@@ -155,15 +159,16 @@ export default function HomePage() {
       if (error && error.code !== '23505') throw error;
 
       setWatchlistIds((prev) => new Set([...prev, key]));
-      
+      window.dispatchEvent(new CustomEvent('couchlog:watchlist-updated'));
+
       const successTitle = status === 'to_watch' ? 'Added to Watchlist!' : 'Started Watching!';
-      const successDesc = status === 'to_watch' 
+      const successDesc = status === 'to_watch'
         ? `${item.title ?? item.name} is now in your Watchlist.`
         : `${item.title ?? item.name} is now in In Progress.`;
-      
+
       toast({ title: successTitle, description: successDesc });
-    } catch (err: any) {
-      const message = err?.message || (err && typeof err === 'object' ? JSON.stringify(err) : String(err));
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : (err && typeof err === 'object' ? JSON.stringify(err) : String(err));
       toast({ title: 'Failed to add', description: message, variant: 'destructive' });
     } finally {
       setAddingId(null);
@@ -316,7 +321,7 @@ export default function HomePage() {
 
         {/* Type toggle */}
         <div
-          className="flex rounded-xl overflow-hidden flex-shrink-0"
+          className="flex rounded-xl overflow-hidden flex-shrink-0 w-full sm:w-auto"
           style={{ border: '1px solid hsl(var(--color-border))', background: 'hsl(var(--color-surface))' }}
           role="group"
           aria-label="Media type filter"
@@ -326,7 +331,7 @@ export default function HomePage() {
               key={t}
               id={`filter-${t}`}
               onClick={() => setMediaType(t)}
-              className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium transition-all"
+              className="flex flex-1 sm:flex-initial items-center justify-center gap-1.5 px-4 py-2 text-sm font-medium transition-all"
               style={{
                 background: mediaType === t ? 'hsl(var(--color-brand) / 0.2)' : 'transparent',
                 color: mediaType === t ? 'hsl(var(--color-brand))' : 'hsl(var(--color-text-muted))',
@@ -357,10 +362,7 @@ export default function HomePage() {
               <p className="text-subtle text-sm mt-1">Try a different search term or filter.</p>
             </div>
           ) : (
-            <div
-              className="grid gap-4 animate-fade-in"
-              style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}
-            >
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4 animate-fade-in">
               {results.map(renderMediaCard)}
             </div>
           )}
@@ -398,10 +400,7 @@ export default function HomePage() {
                   <h2 className="text-lg font-semibold mb-4 flex items-center gap-2" style={{ color: 'hsl(var(--color-text))' }}>
                     <Film size={18} style={{ color: 'hsl(var(--color-accent))' }} /> Trending Movies
                   </h2>
-                  <div
-                    className="grid gap-4"
-                    style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}
-                  >
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
                     {trendingMovies.map(renderMediaCard)}
                   </div>
                 </div>
@@ -412,10 +411,7 @@ export default function HomePage() {
                   <h2 className="text-lg font-semibold mb-4 flex items-center gap-2" style={{ color: 'hsl(var(--color-text))' }}>
                     <Tv size={18} style={{ color: 'hsl(var(--color-brand))' }} /> Trending TV Shows
                   </h2>
-                  <div
-                    className="grid gap-4"
-                    style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}
-                  >
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
                     {trendingTv.map(renderMediaCard)}
                   </div>
                 </div>

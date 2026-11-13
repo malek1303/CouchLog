@@ -92,29 +92,78 @@ export async function getMovieDetails(tmdbId: number) {
   return tmdbFetch(`/movie/${id}`);
 }
 
-/** Episodes airing today for a given show — used by the cron route */
-export async function getEpisodesAiringToday(tmdbId: number, numberOfSeasons: number) {
+export interface EpisodeAirInfo {
+  season: number;
+  episode: number;
+  name: string;
+  air_date: string | null;
+}
+
+/**
+ * Finds recently aired episodes (last 7 days up to today) and upcoming/unaired episodes
+ * across the latest 3 seasons of a TV show.
+ */
+export async function getRecentAndUpcomingEpisodes(
+  tmdbId: number,
+  numberOfSeasons?: number | null
+): Promise<{
+  recentlyAired: EpisodeAirInfo[];
+  upcoming: EpisodeAirInfo[];
+  numberOfSeasons: number;
+  status?: string;
+}> {
   const id = Math.floor(tmdbId);
   if (!Number.isFinite(id) || id <= 0) throw new Error(`Invalid TMDB ID: ${tmdbId}`);
 
-  const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD UTC
-  const results: { season: number; episode: number; name: string }[] = [];
+  let seasonsTotal = numberOfSeasons ?? 0;
+  let showStatus: string | undefined;
+
+  if (!seasonsTotal || seasonsTotal <= 0) {
+    const showData = (await getTvDetails(id)) as { number_of_seasons?: number; status?: string };
+    seasonsTotal = showData.number_of_seasons ?? 0;
+    showStatus = showData.status;
+  }
+
+  if (seasonsTotal <= 0) {
+    return { recentlyAired: [], upcoming: [], numberOfSeasons: seasonsTotal, status: showStatus };
+  }
+
+  const now = new Date();
+  const today = now.toISOString().split('T')[0]; // YYYY-MM-DD UTC
+  const sevenDaysAgoDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const sevenDaysAgo = sevenDaysAgoDate.toISOString().split('T')[0];
+
+  const recentlyAired: EpisodeAirInfo[] = [];
+  const upcoming: EpisodeAirInfo[] = [];
 
   // Check the last 3 seasons to keep API calls manageable
   const seasonsToCheck = Array.from(
-    { length: Math.min(3, numberOfSeasons) },
-    (_, i) => numberOfSeasons - i
-  );
+    { length: Math.min(3, seasonsTotal) },
+    (_, i) => seasonsTotal - i
+  ).filter((s) => s > 0);
 
   await Promise.all(
     seasonsToCheck.map(async (seasonNum) => {
       try {
-        const data = await tmdbFetch<{ episodes: { episode_number: number; name: string; air_date: string | null }[] }>(
-          `/tv/${id}/season/${seasonNum}`
-        );
+        const data = await tmdbFetch<{
+          episodes: { episode_number: number; name: string; air_date: string | null }[];
+        }>(`/tv/${id}/season/${seasonNum}`, 1800);
+
         data.episodes?.forEach((ep) => {
-          if (ep.air_date === today) {
-            results.push({ season: seasonNum, episode: ep.episode_number, name: ep.name });
+          if (ep.air_date && ep.air_date <= today && ep.air_date >= sevenDaysAgo) {
+            recentlyAired.push({
+              season: seasonNum,
+              episode: ep.episode_number,
+              name: ep.name,
+              air_date: ep.air_date,
+            });
+          } else if (!ep.air_date || ep.air_date > today) {
+            upcoming.push({
+              season: seasonNum,
+              episode: ep.episode_number,
+              name: ep.name,
+              air_date: ep.air_date,
+            });
           }
         });
       } catch {
@@ -123,7 +172,20 @@ export async function getEpisodesAiringToday(tmdbId: number, numberOfSeasons: nu
     })
   );
 
-  return results;
+  // Sort upcoming chronologically by season, then episode
+  upcoming.sort((a, b) => (a.season !== b.season ? a.season - b.season : a.episode - b.episode));
+  recentlyAired.sort((a, b) => (a.season !== b.season ? a.season - b.season : a.episode - b.episode));
+
+  return { recentlyAired, upcoming, numberOfSeasons: seasonsTotal, status: showStatus };
+}
+
+/** Episodes airing today for a given show — preserved helper */
+export async function getEpisodesAiringToday(tmdbId: number, numberOfSeasons: number) {
+  const { recentlyAired } = await getRecentAndUpcomingEpisodes(tmdbId, numberOfSeasons);
+  const today = new Date().toISOString().split('T')[0];
+  return recentlyAired
+    .filter((ep) => ep.air_date === today)
+    .map(({ season, episode, name }) => ({ season, episode, name }));
 }
 
 /** Allowed trending types and time windows — used as allowlists */

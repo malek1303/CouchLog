@@ -28,7 +28,35 @@ export default function NotificationBell({ compact }: NotificationBellProps) {
       if (mounted) setUnreadCount(count ?? 0);
     }
 
-    fetchUnread();
+    async function syncAndFetch() {
+      // Trigger a lightweight per-session episode notification check so local/dev and active users stay synced
+      try {
+        const lastSync = sessionStorage.getItem('couchlog-notif-sync');
+        const now = Date.now();
+        if (!lastSync || now - Number(lastSync) > 5 * 60 * 1000) {
+          sessionStorage.setItem('couchlog-notif-sync', String(now));
+          await fetch('/api/cron/check-new-episodes', { method: 'POST' });
+        }
+      } catch {
+        // Ignore sessionStorage or background sync errors
+      }
+      await fetchUnread();
+    }
+
+    syncAndFetch();
+
+    const handleNotificationsUpdated = () => { fetchUnread(); };
+    const handleWatchlistUpdated = async () => {
+      try {
+        sessionStorage.removeItem('couchlog-notif-sync');
+      } catch {
+        // Ignore
+      }
+      await syncAndFetch();
+    };
+
+    window.addEventListener('couchlog:notifications-updated', handleNotificationsUpdated);
+    window.addEventListener('couchlog:watchlist-updated', handleWatchlistUpdated);
 
     // Poll every 30 seconds — avoids realtime channel lifecycle issues
     const interval = setInterval(fetchUnread, 30_000);
@@ -36,6 +64,8 @@ export default function NotificationBell({ compact }: NotificationBellProps) {
     return () => {
       mounted = false;
       clearInterval(interval);
+      window.removeEventListener('couchlog:notifications-updated', handleNotificationsUpdated);
+      window.removeEventListener('couchlog:watchlist-updated', handleWatchlistUpdated);
     };
   }, []);
 

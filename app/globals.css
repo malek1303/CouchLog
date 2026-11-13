@@ -130,8 +130,8 @@ body {
   input::placeholder { color: hsl(var(--color-text-subtle)); }
 }
 
-/* ── Utility Classes ────────────────────────────────────────── */
-@layer utilities {
+/* ── Component Classes ──────────────────────────────────────── */
+@layer components {
   .glass {
     background: hsl(var(--color-surface) / 0.7);
     backdrop-filter: blur(16px) saturate(1.4);
@@ -213,17 +213,21 @@ body {
   .badge-watching   { background: hsl(var(--color-brand) / 0.18);   color: hsl(var(--color-brand)); }
   .badge-completed  { background: hsl(var(--color-success) / 0.15); color: hsl(var(--color-success)); }
   .badge-dropped    { background: hsl(var(--color-error) / 0.12);   color: hsl(var(--color-error)); }
-
-  .text-muted  { color: hsl(var(--color-text-muted)); }
-  .text-subtle { color: hsl(var(--color-text-subtle)); }
-  .text-brand  { color: hsl(var(--color-brand)); }
-  .text-accent { color: hsl(var(--color-accent)); }
+  .badge-rewatch    { background: hsl(var(--color-accent) / 0.15);  color: hsl(var(--color-accent)); }
 
   .divider {
     height: 1px;
     background: hsl(var(--color-border));
     margin: 1.5rem 0;
   }
+}
+
+/* ── Utility Classes ────────────────────────────────────────── */
+@layer utilities {
+  .text-muted  { color: hsl(var(--color-text-muted)); }
+  .text-subtle { color: hsl(var(--color-text-subtle)); }
+  .text-brand  { color: hsl(var(--color-brand)); }
+  .text-accent { color: hsl(var(--color-accent)); }
 
   .animate-fade-in {
     animation: fadeIn 0.3s ease-out forwards;

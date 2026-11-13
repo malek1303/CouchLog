@@ -59,6 +59,16 @@ export default function AuthForm({ mode }: AuthFormProps) {
   const router = useRouter();
   const supabase = createClient();
 
+  // Display ?error= query param passed from /auth/confirm on login page
+  useEffect(() => {
+    if (mode !== 'login') return;
+    const params = new URLSearchParams(window.location.search);
+    const urlError = params.get('error');
+    if (urlError) {
+      setTimeout(() => setError(urlError), 0);
+    }
+  }, [mode]);
+
   // Debounced email duplicate check
   useEffect(() => {
     const isEmailValid = (emailStr: string) => {
@@ -66,12 +76,11 @@ export default function AuthForm({ mode }: AuthFormProps) {
     };
 
     if (mode !== 'register' || !email || !isEmailValid(email)) {
-      setEmailExists(false);
       return;
     }
 
-    setCheckingEmail(true);
     const delayDebounceFn = setTimeout(async () => {
+      setCheckingEmail(true);
       try {
         const res = await fetch('/api/auth/check-email', {
           method: 'POST',
@@ -79,11 +88,7 @@ export default function AuthForm({ mode }: AuthFormProps) {
           body: JSON.stringify({ email }),
         });
         const data = await res.json();
-        if (data.exists) {
-          setEmailExists(true);
-        } else {
-          setEmailExists(false);
-        }
+        setEmailExists(Boolean(data.exists));
       } catch (err) {
         console.error('Failed to check email availability:', err);
       } finally {
@@ -101,6 +106,13 @@ export default function AuthForm({ mode }: AuthFormProps) {
     setSuccess(null);
 
     if (mode === 'register') {
+      const { score } = getPasswordStrength(password);
+      if (password.length < 8 || score < 4) {
+        setError('Please choose a strong password meeting all 4 requirements.');
+        setLoading(false);
+        return;
+      }
+
       if (password !== confirmPassword) {
         setError('Passwords do not match.');
         setLoading(false);
@@ -226,7 +238,7 @@ export default function AuthForm({ mode }: AuthFormProps) {
         </div>
 
         {/* Card */}
-        <div className="card p-8 relative overflow-hidden" style={{ borderRadius: '1.25rem' }}>
+        <div className="card p-5 sm:p-8 relative overflow-hidden" style={{ borderRadius: '1.25rem' }}>
           {/* Subtle colored accent top border in register mode to distinguish it visually from sign in */}
           {mode === 'register' && (
             <div
@@ -253,7 +265,10 @@ export default function AuthForm({ mode }: AuthFormProps) {
                   id="email"
                   type="email"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    if (emailExists) setEmailExists(false);
+                  }}
                   placeholder="you@example.com"
                   required
                   style={{
@@ -310,7 +325,7 @@ export default function AuthForm({ mode }: AuthFormProps) {
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
                   required
-                  minLength={6}
+                  minLength={mode === 'register' ? 8 : 6}
                   style={{ paddingLeft: '2.5rem', paddingRight: '2.75rem' }}
                 />
                 <button
@@ -348,7 +363,7 @@ export default function AuthForm({ mode }: AuthFormProps) {
                     </div>
 
                     {/* Dynamic checklist requirements */}
-                    <div className="grid grid-cols-2 gap-x-2 gap-y-1 pt-1.5 border-t" style={{ borderColor: 'hsl(var(--color-border) / 0.4)' }}>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-2 gap-y-1 pt-1.5 border-t" style={{ borderColor: 'hsl(var(--color-border) / 0.4)' }}>
                       {checks.map((check, idx) => (
                         <div key={idx} className="flex items-center gap-1 text-[11px] transition-all">
                           {check.met ? (

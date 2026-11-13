@@ -154,14 +154,14 @@ export default function AppNav({ userEmail }: AppNavProps) {
 
       {/* Mobile Header */}
       <header
-        className="lg:hidden fixed top-0 left-0 right-0 z-40 glass flex items-center justify-between px-4"
+        className="lg:hidden fixed top-0 left-0 right-0 z-40 glass flex items-center justify-between px-3 sm:px-4"
         style={{ height: '60px', borderBottom: '1px solid hsl(var(--color-border))' }}
       >
-        <Link href="/home" className="flex items-center gap-2">
-          <Tv size={20} style={{ color: 'hsl(var(--color-brand))' }} />
-          <span className="font-bold">CouchLog</span>
+        <Link href="/home" className="flex items-center gap-2 min-w-0">
+          <Tv size={20} style={{ color: 'hsl(var(--color-brand))', flexShrink: 0 }} />
+          <span className="font-bold truncate">CouchLog</span>
         </Link>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1.5 sm:gap-2.5 flex-shrink-0">
           <ThemeToggle />
           <button
             onClick={() => setSearchOpen(true)}
@@ -171,8 +171,8 @@ export default function AppNav({ userEmail }: AppNavProps) {
           >
             <Search size={20} style={{ color: 'hsl(var(--color-text-muted))' }} />
           </button>
-          <Link href="/notifications" aria-label="Notifications" className="flex items-center justify-center">
-            <NotificationBell compact />
+          <Link href="/notifications" aria-label="Notifications" className="p-2 flex items-center justify-center">
+            <NotificationBell />
           </Link>
           <button
             onClick={() => setMobileOpen(!mobileOpen)}
@@ -188,12 +188,12 @@ export default function AppNav({ userEmail }: AppNavProps) {
       {/* Mobile Drawer */}
       {mobileOpen && (
         <div
-          className="lg:hidden fixed inset-0 z-50"
+          className="lg:hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-xs"
           onClick={() => setMobileOpen(false)}
         >
           <div
-            className="absolute right-0 top-0 h-full w-72 glass flex flex-col p-6"
-            style={{ borderLeft: '1px solid hsl(var(--color-border))' }}
+            className="absolute right-0 top-0 h-full w-72 max-w-[85vw] glass flex flex-col p-6"
+            style={{ borderLeft: '1px solid hsl(var(--color-border))', background: 'hsl(var(--color-surface) / 0.95)' }}
             onClick={(e) => e.stopPropagation()}
           >
             <button
@@ -219,7 +219,7 @@ export default function AppNav({ userEmail }: AppNavProps) {
               <span>Search...</span>
             </button>
 
-            <nav className="space-y-1 flex-1">
+            <nav className="space-y-1 flex-1 overflow-y-auto">
               {[...NAV_ITEMS, { href: '/notifications', label: 'Notifications', icon: Bell }, { href: '/about', label: 'About Us', icon: Info }].map(
                 ({ href, label, icon: Icon }) => {
                   const active = pathname.startsWith(href);
@@ -235,16 +235,31 @@ export default function AppNav({ userEmail }: AppNavProps) {
                       }}
                     >
                       <Icon size={17} />
-                      {label}
+                      <span>{label}</span>
+                      {href === '/notifications' && <NotificationBell compact />}
                     </Link>
                   );
                 }
               )}
             </nav>
-            <button onClick={handleSignOut} className="btn btn-ghost w-full text-sm mt-4" id="mobile-sign-out-btn">
-              <LogOut size={15} />
-              Sign Out
-            </button>
+
+            <div className="pt-4 mt-4" style={{ borderTop: '1px solid hsl(var(--color-border))' }}>
+              <div className="flex items-center gap-3 px-2 mb-3">
+                <div
+                  className="flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold flex-shrink-0"
+                  style={{ background: 'hsl(var(--color-brand) / 0.2)', color: 'hsl(var(--color-brand))' }}
+                >
+                  {initials}
+                </div>
+                <span className="text-sm truncate" style={{ color: 'hsl(var(--color-text-muted))' }}>
+                  {userEmail}
+                </span>
+              </div>
+              <button onClick={handleSignOut} className="btn btn-ghost w-full text-sm" id="mobile-sign-out-btn">
+                <LogOut size={15} />
+                Sign Out
+              </button>
+            </div>
           </div>
         </div>
       )}

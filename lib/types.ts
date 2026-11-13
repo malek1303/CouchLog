@@ -4,7 +4,8 @@
 // ── Database Row Types ───────────────────────────────────────
 
 export type MediaType = 'movie' | 'tv';
-export type WatchlistStatus = 'to_watch' | 'watching' | 'completed' | 'dropped';
+export type WatchlistStatus = 'to_watch' | 'watching' | 'completed' | 'dropped' | 'rewatch';
+export type InProgressCategory = 'watching' | 'come_back_later' | 'rewatch' | 'completed';
 
 export interface Media {
   id: string;

@@ -1,17 +1,18 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import { Sun, Moon } from 'lucide-react';
 
-export default function ThemeToggle() {
-  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
-  const [mounted, setMounted] = useState(false);
+const subscribeNoop = () => () => {};
 
-  useEffect(() => {
-    setMounted(true);
-    const isLight = document.documentElement.classList.contains('light');
-    setTheme(isLight ? 'light' : 'dark');
-  }, []);
+function getInitialTheme(): 'dark' | 'light' {
+  if (typeof document === 'undefined') return 'dark';
+  return document.documentElement.classList.contains('light') ? 'light' : 'dark';
+}
+
+export default function ThemeToggle() {
+  const mounted = useSyncExternalStore(subscribeNoop, () => true, () => false);
+  const [theme, setTheme] = useState<'dark' | 'light'>(getInitialTheme);
 
   function toggleTheme() {
     const nextTheme = theme === 'dark' ? 'light' : 'dark';
@@ -33,8 +34,8 @@ export default function ThemeToggle() {
   // Render a placeholder with identical dimensions to prevent layout shift during mounting
   if (!mounted) {
     return (
-      <div 
-        className="w-9 h-9 rounded-xl flex-shrink-0" 
+      <div
+        className="w-9 h-9 rounded-xl flex-shrink-0"
         style={{
           background: 'hsl(var(--color-surface-2))',
           border: '1px solid hsl(var(--color-border))',
@@ -57,7 +58,7 @@ export default function ThemeToggle() {
       title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
     >
       {/* Inner background glow effect */}
-      <span 
+      <span
         className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
         style={{
           background: 'radial-gradient(circle at center, hsl(var(--color-brand) / 0.12), transparent 70%)'

@@ -1,8 +1,14 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Clock, Check } from 'lucide-react';
+
+export interface SeasonOption {
+  season_number: number;
+  episode_count: number;
+  name?: string;
+}
 
 interface TimestampModalProps {
   current: string;
@@ -10,8 +16,30 @@ interface TimestampModalProps {
   isTv?: boolean;
   currentSeason?: number;
   currentEpisode?: number;
+  seasons?: SeasonOption[];
   onClose: () => void;
   onSave: (timestamp: string, season?: number, episode?: number) => void | Promise<void>;
+}
+
+const subscribeNoop = () => () => {};
+
+function parseTimestamp(ts: string) {
+  if (!ts) return { hours: 0, minutes: 0, seconds: 0 };
+  const parts = ts.split(':').map(Number);
+  if (parts.length === 3) {
+    return { hours: parts[0] || 0, minutes: parts[1] || 0, seconds: parts[2] || 0 };
+  } else if (parts.length === 2) {
+    return { hours: 0, minutes: parts[0] || 0, seconds: parts[1] || 0 };
+  }
+  return { hours: 0, minutes: 0, seconds: 0 };
+}
+
+function formatTimestamp(h: number, m: number, s: number) {
+  const pad = (num: number) => String(num).padStart(2, '0');
+  if (h > 0) {
+    return `${h}:${pad(m)}:${pad(s)}`;
+  }
+  return `${m}:${pad(s)}`;
 }
 
 export default function TimestampModal({
@@ -20,26 +48,31 @@ export default function TimestampModal({
   isTv = false,
   currentSeason = 1,
   currentEpisode = 1,
+  seasons,
   onClose,
   onSave,
 }: TimestampModalProps) {
-  // SSR safety for Portals
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => {
-    setMounted(true);
-    return () => setMounted(false);
-  }, []);
+  const mounted = useSyncExternalStore(subscribeNoop, () => true, () => false);
 
-  // Parse initial timestamp
   const initialTime = parseTimestamp(current);
 
   const [hours, setHours] = useState(initialTime.hours);
   const [minutes, setMinutes] = useState(initialTime.minutes);
   const [seconds, setSeconds] = useState(initialTime.seconds);
 
-  const [season, setSeason] = useState(currentSeason);
+  const availableSeasons = seasons && seasons.length > 0 ? seasons : null;
+  const initialSeason =
+    availableSeasons && !availableSeasons.some((s) => s.season_number === currentSeason)
+      ? availableSeasons[0].season_number
+      : currentSeason;
+
+  const [season, setSeason] = useState(initialSeason);
   const [episode, setEpisode] = useState(currentEpisode);
   const [saving, setSaving] = useState(false);
+
+  const selectedSeasonObj = availableSeasons?.find((s) => s.season_number === season);
+  const maxEpisodes = selectedSeasonObj ? Math.max(1, selectedSeasonObj.episode_count) : 100;
+  const clampedEpisode = Math.min(Math.max(1, episode), maxEpisodes);
 
   // Close on Escape
   useEffect(() => {
@@ -50,31 +83,21 @@ export default function TimestampModal({
     return () => window.removeEventListener('keydown', handleKey);
   }, [onClose]);
 
-  function parseTimestamp(ts: string) {
-    if (!ts) return { hours: 0, minutes: 0, seconds: 0 };
-    const parts = ts.split(':').map(Number);
-    if (parts.length === 3) {
-      return { hours: parts[0] || 0, minutes: parts[1] || 0, seconds: parts[2] || 0 };
-    } else if (parts.length === 2) {
-      return { hours: 0, minutes: parts[0] || 0, seconds: parts[1] || 0 };
+  function handleSeasonChange(nextSeason: number) {
+    setSeason(nextSeason);
+    const nextSeasonObj = availableSeasons?.find((s) => s.season_number === nextSeason);
+    const nextMax = nextSeasonObj ? Math.max(1, nextSeasonObj.episode_count) : 100;
+    if (episode > nextMax) {
+      setEpisode(nextMax);
     }
-    return { hours: 0, minutes: 0, seconds: 0 };
-  }
-
-  function formatTimestamp(h: number, m: number, s: number) {
-    const pad = (num: number) => String(num).padStart(2, '0');
-    if (h > 0) {
-      return `${h}:${pad(m)}:${pad(s)}`;
-    }
-    return `${m}:${pad(s)}`;
   }
 
   async function handleSave() {
     setSaving(true);
     const ts = formatTimestamp(hours, minutes, seconds);
-    // If it is 00:00, we treat it as cleared
-    const finalTs = (hours === 0 && minutes === 0 && seconds === 0) ? '' : ts;
-    await onSave(finalTs, isTv ? season : undefined, isTv ? episode : undefined);
+    // If it is 0:00, treat it as cleared
+    const finalTs = hours === 0 && minutes === 0 && seconds === 0 ? '' : ts;
+    await onSave(finalTs, isTv ? season : undefined, isTv ? clampedEpisode : undefined);
     setSaving(false);
   }
 
@@ -83,7 +106,7 @@ export default function TimestampModal({
     setMinutes(0);
     setSeconds(0);
     setSaving(true);
-    await onSave('', isTv ? season : undefined, isTv ? episode : undefined);
+    await onSave('', isTv ? season : undefined, isTv ? clampedEpisode : undefined);
     setSaving(false);
   }
 
@@ -94,21 +117,21 @@ export default function TimestampModal({
       onClick={onClose}
     >
       <div
-        className="card animate-slide-up w-full max-w-md"
-        style={{ padding: '1.75rem', borderRadius: '1.25rem' }}
+        className="card animate-slide-up w-full max-w-md p-5 sm:p-7"
+        style={{ borderRadius: '1.25rem' }}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-label="Update tracking progress"
       >
         {/* Header */}
-        <div className="flex items-start justify-between mb-5">
-          <div>
+        <div className="flex items-start justify-between mb-5 gap-3">
+          <div className="min-w-0">
             <div className="flex items-center gap-2 mb-1">
               <Clock size={16} style={{ color: 'hsl(var(--color-brand))' }} />
               <h3 className="text-base font-semibold">Update Progress</h3>
             </div>
-            <p className="text-xs text-muted truncate max-w-xs">{label}</p>
+            <p className="text-xs text-muted truncate">{label}</p>
           </div>
           <button
             onClick={onClose}
@@ -129,7 +152,7 @@ export default function TimestampModal({
               </label>
               <select
                 value={season}
-                onChange={(e) => setSeason(Number(e.target.value))}
+                onChange={(e) => handleSeasonChange(Number(e.target.value))}
                 className="w-full text-sm rounded-xl p-2"
                 style={{
                   background: 'hsl(var(--color-surface-2))',
@@ -137,11 +160,17 @@ export default function TimestampModal({
                   color: 'hsl(var(--color-text))',
                 }}
               >
-                {Array.from({ length: 20 }, (_, i) => i + 1).map((s) => (
-                  <option key={s} value={s}>
-                    Season {s}
-                  </option>
-                ))}
+                {availableSeasons
+                  ? availableSeasons.map((s) => (
+                      <option key={s.season_number} value={s.season_number}>
+                        Season {s.season_number}
+                      </option>
+                    ))
+                  : Array.from({ length: 20 }, (_, i) => i + 1).map((s) => (
+                      <option key={s} value={s}>
+                        Season {s}
+                      </option>
+                    ))}
               </select>
             </div>
             <div>
@@ -149,7 +178,7 @@ export default function TimestampModal({
                 Episode
               </label>
               <select
-                value={episode}
+                value={clampedEpisode}
                 onChange={(e) => setEpisode(Number(e.target.value))}
                 className="w-full text-sm rounded-xl p-2"
                 style={{
@@ -158,7 +187,7 @@ export default function TimestampModal({
                   color: 'hsl(var(--color-text))',
                 }}
               >
-                {Array.from({ length: 100 }, (_, i) => i + 1).map((ep) => (
+                {Array.from({ length: maxEpisodes }, (_, i) => i + 1).map((ep) => (
                   <option key={ep} value={ep}>
                     Episode {ep}
                   </option>

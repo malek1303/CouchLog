@@ -43,7 +43,10 @@ CREATE TABLE IF NOT EXISTS public.watchlist (
   user_id          UUID NOT NULL REFERENCES auth.users ON DELETE CASCADE,
   media_id         UUID NOT NULL REFERENCES public.media ON DELETE CASCADE,
   status           TEXT NOT NULL DEFAULT 'to_watch'
-                   CHECK (status IN ('to_watch', 'watching', 'completed', 'dropped')),
+                   CHECK (status IN ('to_watch', 'watching', 'completed', 'dropped', 'rewatch')),
+  -- Migration for existing databases:
+  -- ALTER TABLE public.watchlist DROP CONSTRAINT IF EXISTS watchlist_status_check;
+  -- ALTER TABLE public.watchlist ADD CONSTRAINT watchlist_status_check CHECK (status IN ('to_watch', 'watching', 'completed', 'dropped', 'rewatch'));
   current_season   INTEGER NOT NULL DEFAULT 1,
   current_episode  INTEGER NOT NULL DEFAULT 1,
   last_timestamp   TEXT,
