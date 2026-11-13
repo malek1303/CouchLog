@@ -103,73 +103,110 @@ function getEffectiveTimestamp(item: Watchlist): string | null {
   return item.last_timestamp;
 }
 
+interface DragPreviewState {
+  id: string;
+  title: string;
+  posterPath: string | null;
+  isTv: boolean;
+  x: number;
+  y: number;
+}
+
 // ── Page Component ─────────────────────────────────────────────
 
 export default function InProgressPage() {
   const [items, setItems] = useState<Watchlist[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState<'all' | InProgressCategory>('all');
-  const [draggingItemId, setDraggingItemId] = useState<string | null>(null);
+  const [dragPreview, setDragPreview] = useState<DragPreviewState | null>(null);
   const [dragOverCategory, setDragOverCategory] = useState<InProgressCategory | null>(null);
+
+  const draggingItemId = dragPreview?.id ?? null;
+  const pointerPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const suppressClickRef = useRef(false);
+  const pendingCleanupRef = useRef<(() => void) | null>(null);
+  const moveItemToCategoryRef = useRef<(itemId: string, category: InProgressCategory) => Promise<void>>(
+    async () => {}
+  );
 
   const supabase = createClient();
   const { toast } = useToast();
+
+  const getDropCategoryAtPoint = useCallback((x: number, y: number): InProgressCategory | null => {
+    const el = document.elementFromPoint(x, y);
+    const target = el?.closest('[data-drop-category]') as HTMLElement | null;
+    const cat = target?.dataset.dropCategory as InProgressCategory | undefined;
+    return cat ?? null;
+  }, []);
+
+  const shouldSuppressClick = useCallback(() => suppressClickRef.current, []);
+
+  // Ensure any active pointer listeners are cleaned up on unmount
+  useEffect(() => {
+    return () => {
+      pendingCleanupRef.current?.();
+    };
+  }, []);
 
   // Enable smooth edge auto-scrolling and mouse-wheel scrolling while dragging a card
   useEffect(() => {
     if (!draggingItemId) return;
 
-    let pointerY: number | null = null;
     let rafId: number | null = null;
     const EDGE_THRESHOLD = 140;
     const MAX_SCROLL_SPEED = 20;
 
-    const updatePointer = (e: DragEvent) => {
-      e.preventDefault();
-      if (e.clientY > 0 || e.clientX > 0) {
-        pointerY = e.clientY;
-      }
+    const prevUserSelect = document.body.style.userSelect;
+    const prevCursor = document.body.style.cursor;
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = 'grabbing';
+
+    const syncDropTarget = () => {
+      const { x, y } = pointerPosRef.current;
+      const hoveredCat = getDropCategoryAtPoint(x, y);
+      setDragOverCategory((prev) => (prev === hoveredCat ? prev : hoveredCat));
     };
 
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault();
+      const multiplier =
+        e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? window.innerHeight : 1;
       window.scrollBy({
-        top: e.deltaY,
-        left: e.deltaX,
+        top: e.deltaY * multiplier,
+        left: e.deltaX * multiplier,
         behavior: 'instant' as ScrollBehavior,
       });
+      syncDropTarget();
     };
 
     const tick = () => {
-      if (pointerY !== null) {
-        const vh = window.innerHeight;
-        let delta = 0;
-        if (pointerY > vh - EDGE_THRESHOLD) {
-          const ratio = Math.min(1, (pointerY - (vh - EDGE_THRESHOLD)) / EDGE_THRESHOLD);
-          delta = Math.ceil(ratio * MAX_SCROLL_SPEED);
-        } else if (pointerY < EDGE_THRESHOLD) {
-          const ratio = Math.min(1, (EDGE_THRESHOLD - pointerY) / EDGE_THRESHOLD);
-          delta = -Math.ceil(ratio * MAX_SCROLL_SPEED);
-        }
-        if (delta !== 0) {
-          window.scrollBy({ top: delta, behavior: 'instant' as ScrollBehavior });
-        }
+      const { y } = pointerPosRef.current;
+      const vh = window.innerHeight;
+      let delta = 0;
+      if (y > vh - EDGE_THRESHOLD) {
+        const ratio = Math.min(1, (y - (vh - EDGE_THRESHOLD)) / EDGE_THRESHOLD);
+        delta = Math.ceil(ratio * MAX_SCROLL_SPEED);
+      } else if (y < EDGE_THRESHOLD) {
+        const ratio = Math.min(1, (EDGE_THRESHOLD - y) / EDGE_THRESHOLD);
+        delta = -Math.ceil(ratio * MAX_SCROLL_SPEED);
+      }
+      if (delta !== 0) {
+        window.scrollBy({ top: delta, behavior: 'instant' as ScrollBehavior });
+        syncDropTarget();
       }
       rafId = window.requestAnimationFrame(tick);
     };
 
-    window.addEventListener('dragover', updatePointer);
-    window.addEventListener('drag', updatePointer);
     window.addEventListener('wheel', handleWheel, { capture: true, passive: false });
     rafId = window.requestAnimationFrame(tick);
 
     return () => {
-      window.removeEventListener('dragover', updatePointer);
-      window.removeEventListener('drag', updatePointer);
+      document.body.style.userSelect = prevUserSelect;
+      document.body.style.cursor = prevCursor;
       window.removeEventListener('wheel', handleWheel, { capture: true });
       if (rafId !== null) window.cancelAnimationFrame(rafId);
     };
-  }, [draggingItemId]);
+  }, [draggingItemId, getDropCategoryAtPoint]);
 
   const fetchInProgress = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -358,14 +395,116 @@ export default function InProgressPage() {
     toast({ title: 'Movie marked as finished!', description: `${item.media?.title ?? 'Movie'} moved to Finished.` });
   }
 
-  function handleDropOnCategory(e: React.DragEvent, category: InProgressCategory) {
-    e.preventDefault();
-    const droppedId = e.dataTransfer.getData('text/plain') || draggingItemId;
-    setDragOverCategory(null);
-    setDraggingItemId(null);
-    if (droppedId) {
-      moveItemToCategory(droppedId, category);
+  useEffect(() => {
+    moveItemToCategoryRef.current = moveItemToCategory;
+  });
+
+  function startPointerDrag(
+    e: React.PointerEvent,
+    item: Watchlist,
+    source: 'card' | 'handle'
+  ) {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    // Let touch/pen scroll normally on the card body; drag via the grip handle
+    if (source === 'card' && e.pointerType !== 'mouse') return;
+
+    if (source === 'card') {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest('button, a, input, select, textarea, [role="dialog"]')) {
+        return;
+      }
+    } else {
+      e.stopPropagation();
     }
+
+    pendingCleanupRef.current?.();
+
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const pointerId = e.pointerId;
+    let activated = false;
+
+    pointerPosRef.current = { x: startX, y: startY };
+
+    const cleanup = () => {
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerCancel);
+      window.removeEventListener('keydown', onKeyDown);
+      if (pendingCleanupRef.current === cleanup) {
+        pendingCleanupRef.current = null;
+      }
+    };
+    pendingCleanupRef.current = cleanup;
+
+    const finishDrag = (dropX?: number, dropY?: number) => {
+      cleanup();
+      if (!activated) return;
+
+      const targetCategory =
+        dropX !== undefined && dropY !== undefined
+          ? getDropCategoryAtPoint(dropX, dropY)
+          : null;
+
+      setDragPreview(null);
+      setDragOverCategory(null);
+
+      window.setTimeout(() => {
+        suppressClickRef.current = false;
+      }, 50);
+
+      if (targetCategory) {
+        void moveItemToCategoryRef.current(item.id, targetCategory);
+      }
+    };
+
+    const onPointerMove = (moveEvent: PointerEvent) => {
+      if (moveEvent.pointerId !== pointerId) return;
+
+      const dx = moveEvent.clientX - startX;
+      const dy = moveEvent.clientY - startY;
+
+      if (!activated) {
+        if (Math.hypot(dx, dy) < 6) return;
+        activated = true;
+        suppressClickRef.current = true;
+        window.getSelection()?.removeAllRanges();
+      }
+
+      pointerPosRef.current = { x: moveEvent.clientX, y: moveEvent.clientY };
+      const hoveredCat = getDropCategoryAtPoint(moveEvent.clientX, moveEvent.clientY);
+
+      setDragPreview({
+        id: item.id,
+        title: item.media?.title ?? 'Untitled',
+        posterPath: item.media?.poster_path ?? null,
+        isTv: item.media?.media_type === 'tv',
+        x: moveEvent.clientX,
+        y: moveEvent.clientY,
+      });
+      setDragOverCategory((prev) => (prev === hoveredCat ? prev : hoveredCat));
+    };
+
+    const onPointerUp = (upEvent: PointerEvent) => {
+      if (upEvent.pointerId !== pointerId) return;
+      finishDrag(upEvent.clientX, upEvent.clientY);
+    };
+
+    const onPointerCancel = (cancelEvent: PointerEvent) => {
+      if (cancelEvent.pointerId !== pointerId) return;
+      finishDrag();
+    };
+
+    const onKeyDown = (keyEvent: KeyboardEvent) => {
+      if (keyEvent.key === 'Escape') {
+        finishDrag();
+      }
+    };
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onPointerCancel);
+    window.addEventListener('keydown', onKeyDown);
   }
 
   if (loading) {
@@ -429,15 +568,8 @@ export default function InProgressPage() {
           return (
             <button
               key={cat.id}
+              data-drop-category={cat.id}
               onClick={() => setActiveFilter(cat.id)}
-              onDragOver={(e) => {
-                e.preventDefault();
-                if (dragOverCategory !== cat.id) setDragOverCategory(cat.id);
-              }}
-              onDragLeave={() => {
-                if (dragOverCategory === cat.id) setDragOverCategory(null);
-              }}
-              onDrop={(e) => handleDropOnCategory(e, cat.id)}
               className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all"
               style={{
                 background: isDropTarget
@@ -475,16 +607,7 @@ export default function InProgressPage() {
             return (
               <section
                 key={cat.id}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  if (dragOverCategory !== cat.id) setDragOverCategory(cat.id);
-                }}
-                onDragLeave={(e) => {
-                  if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                    setDragOverCategory(null);
-                  }
-                }}
-                onDrop={(e) => handleDropOnCategory(e, cat.id)}
+                data-drop-category={cat.id}
                 className="rounded-2xl p-3 sm:p-4 transition-all"
                 style={{
                   background: isDropTarget ? 'hsl(var(--color-brand) / 0.06)' : 'hsl(var(--color-surface) / 0.35)',
@@ -536,15 +659,8 @@ export default function InProgressPage() {
                         item={item}
                         category={cat.id}
                         isDragging={draggingItemId === item.id}
-                        onDragStart={(e) => {
-                          e.dataTransfer.setData('text/plain', item.id);
-                          e.dataTransfer.effectAllowed = 'move';
-                          setDraggingItemId(item.id);
-                        }}
-                        onDragEnd={() => {
-                          setDraggingItemId(null);
-                          setDragOverCategory(null);
-                        }}
+                        onPointerDragStart={(e, source) => startPointerDrag(e, item, source)}
+                        shouldSuppressClick={shouldSuppressClick}
                         onProgressUpdate={updateProgress}
                         onMarkMovieCompleted={markMovieCompleted}
                         onMoveCategory={(targetCat) => moveItemToCategory(item.id, targetCat)}
@@ -559,6 +675,57 @@ export default function InProgressPage() {
           })}
         </div>
       )}
+
+      {dragPreview && (
+        <div
+          className="card pointer-events-none flex items-center gap-3 p-2.5 shadow-2xl"
+          style={{
+            position: 'fixed',
+            left: dragPreview.x,
+            top: dragPreview.y,
+            transform: 'translate3d(14px, 14px, 0)',
+            width: 248,
+            zIndex: 9999,
+            background: 'hsl(var(--color-surface) / 0.96)',
+            border: '1px solid hsl(var(--color-brand))',
+            boxShadow: '0 20px 45px rgba(0, 0, 0, 0.45)',
+          }}
+        >
+          <div
+            className="relative flex-shrink-0 overflow-hidden rounded-lg"
+            style={{ width: 38, height: 56, background: 'hsl(var(--color-surface-2))' }}
+          >
+            {dragPreview.posterPath ? (
+              <Image
+                src={posterUrl(dragPreview.posterPath, 'w185')}
+                alt={dragPreview.title}
+                fill
+                sizes="38px"
+                className="object-cover"
+                unoptimized
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center">
+                {dragPreview.isTv ? (
+                  <Tv size={16} style={{ color: 'hsl(var(--color-border))' }} />
+                ) : (
+                  <Film size={16} style={{ color: 'hsl(var(--color-border))' }} />
+                )}
+              </div>
+            )}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-semibold truncate" style={{ color: 'hsl(var(--color-text))' }}>
+              {dragPreview.title}
+            </p>
+            <p className="text-[11px] text-subtle mt-0.5 truncate">
+              {dragOverCategory
+                ? `Drop in ${CATEGORIES.find((c) => c.id === dragOverCategory)?.label ?? 'category'}`
+                : 'Drag to a category · Scroll with wheel'}
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -568,8 +735,8 @@ interface InProgressCardProps {
   item: Watchlist;
   category: InProgressCategory;
   isDragging: boolean;
-  onDragStart: (e: React.DragEvent) => void;
-  onDragEnd: () => void;
+  onPointerDragStart: (e: React.PointerEvent, source: 'card' | 'handle') => void;
+  shouldSuppressClick: () => boolean;
   onProgressUpdate: (
     item: Watchlist,
     season: number,
@@ -587,8 +754,8 @@ function InProgressCard({
   item,
   category,
   isDragging,
-  onDragStart,
-  onDragEnd,
+  onPointerDragStart,
+  shouldSuppressClick,
   onProgressUpdate,
   onMarkMovieCompleted,
   onMoveCategory,
@@ -1043,26 +1210,29 @@ function InProgressCard({
 
   return (
     <div
-      draggable
-      onDragStart={onDragStart}
-      onDragEnd={onDragEnd}
       className="card relative"
       style={{
         padding: 0,
         overflow: showMenu ? 'visible' : 'hidden',
-        opacity: isDragging ? 0.5 : 1,
+        opacity: isDragging ? 0.4 : 1,
         zIndex: showMenu ? 30 : undefined,
       }}
     >
       {/* Header Info Block */}
       <div
         className={`flex gap-3 sm:gap-4 p-3.5 sm:p-4 transition-colors ${isTv ? 'cursor-pointer hover:bg-white/[0.01]' : ''}`}
-        onClick={() => { if (isTv) setExpanded(!expanded); }}
+        onPointerDown={(e) => onPointerDragStart(e, 'card')}
+        onClick={() => {
+          if (shouldSuppressClick()) return;
+          if (isTv) setExpanded(!expanded);
+        }}
       >
         {/* Drag handle */}
         <div
-          className="hidden sm:flex items-center justify-center text-subtle hover:text-muted cursor-grab active:cursor-grabbing flex-shrink-0 pt-1 self-start"
+          className="flex items-center justify-center text-subtle hover:text-muted cursor-grab active:cursor-grabbing flex-shrink-0 pt-1 self-start select-none"
+          style={{ touchAction: 'none' }}
           title="Drag to move category"
+          onPointerDown={(e) => onPointerDragStart(e, 'handle')}
           onClick={(e) => e.stopPropagation()}
         >
           <GripVertical size={16} />
@@ -1076,7 +1246,8 @@ function InProgressCard({
               alt={media.title}
               fill
               sizes="64px"
-              className="object-cover"
+              className="object-cover select-none"
+              draggable={false}
               unoptimized
             />
           ) : (
