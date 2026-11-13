@@ -115,6 +115,62 @@ export default function InProgressPage() {
   const supabase = createClient();
   const { toast } = useToast();
 
+  // Enable smooth edge auto-scrolling and mouse-wheel scrolling while dragging a card
+  useEffect(() => {
+    if (!draggingItemId) return;
+
+    let pointerY: number | null = null;
+    let rafId: number | null = null;
+    const EDGE_THRESHOLD = 140;
+    const MAX_SCROLL_SPEED = 20;
+
+    const updatePointer = (e: DragEvent) => {
+      e.preventDefault();
+      if (e.clientY > 0 || e.clientX > 0) {
+        pointerY = e.clientY;
+      }
+    };
+
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      window.scrollBy({
+        top: e.deltaY,
+        left: e.deltaX,
+        behavior: 'instant' as ScrollBehavior,
+      });
+    };
+
+    const tick = () => {
+      if (pointerY !== null) {
+        const vh = window.innerHeight;
+        let delta = 0;
+        if (pointerY > vh - EDGE_THRESHOLD) {
+          const ratio = Math.min(1, (pointerY - (vh - EDGE_THRESHOLD)) / EDGE_THRESHOLD);
+          delta = Math.ceil(ratio * MAX_SCROLL_SPEED);
+        } else if (pointerY < EDGE_THRESHOLD) {
+          const ratio = Math.min(1, (EDGE_THRESHOLD - pointerY) / EDGE_THRESHOLD);
+          delta = -Math.ceil(ratio * MAX_SCROLL_SPEED);
+        }
+        if (delta !== 0) {
+          window.scrollBy({ top: delta, behavior: 'instant' as ScrollBehavior });
+        }
+      }
+      rafId = window.requestAnimationFrame(tick);
+    };
+
+    window.addEventListener('dragover', updatePointer);
+    window.addEventListener('drag', updatePointer);
+    window.addEventListener('wheel', handleWheel, { capture: true, passive: false });
+    rafId = window.requestAnimationFrame(tick);
+
+    return () => {
+      window.removeEventListener('dragover', updatePointer);
+      window.removeEventListener('drag', updatePointer);
+      window.removeEventListener('wheel', handleWheel, { capture: true });
+      if (rafId !== null) window.cancelAnimationFrame(rafId);
+    };
+  }, [draggingItemId]);
+
   const fetchInProgress = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return [];
@@ -347,7 +403,10 @@ export default function InProgressPage() {
       </div>
 
       {/* Category Filter Pills (also act as Drag & Drop targets) */}
-      <div className="flex flex-wrap gap-2 mb-6">
+      <div
+        className="sticky top-16 lg:top-3 z-20 flex flex-wrap gap-2 mb-6 py-2 px-2 -mx-2 rounded-2xl backdrop-blur-md"
+        style={{ background: 'hsl(var(--color-bg) / 0.8)' }}
+      >
         <button
           onClick={() => setActiveFilter('all')}
           className="px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all"
