@@ -44,6 +44,51 @@ function formatAirDate(airDate: string | null | undefined): string {
 // ── Category Configuration (Issue #7) ──────────────────────────
 
 const REWATCH_MARKER = '__rewatch__';
+const REWATCH_PREFIX = '__rewatch__:';
+
+interface RewatchMeta {
+  ts: string | null;
+  orig?: {
+    s: number;
+    e: number;
+    ts: string | null;
+  };
+}
+
+function isRewatchTimestamp(ts: string | null | undefined): boolean {
+  return Boolean(ts && (ts === REWATCH_MARKER || ts.startsWith(REWATCH_PREFIX)));
+}
+
+function parseRewatchMeta(ts: string | null | undefined): RewatchMeta {
+  if (!ts || ts === REWATCH_MARKER || !ts.startsWith(REWATCH_PREFIX)) {
+    return { ts: null };
+  }
+  try {
+    const parsed = JSON.parse(ts.slice(REWATCH_PREFIX.length)) as RewatchMeta;
+    if (typeof parsed === 'object' && parsed !== null) {
+      return {
+        ts: typeof parsed.ts === 'string' && parsed.ts ? parsed.ts : null,
+        orig:
+          parsed.orig &&
+          typeof parsed.orig.s === 'number' &&
+          typeof parsed.orig.e === 'number'
+            ? {
+                s: parsed.orig.s,
+                e: parsed.orig.e,
+                ts: typeof parsed.orig.ts === 'string' && parsed.orig.ts ? parsed.orig.ts : null,
+              }
+            : undefined,
+      };
+    }
+  } catch {
+    // Ignore malformed rewatch metadata
+  }
+  return { ts: null };
+}
+
+function encodeRewatchMeta(meta: RewatchMeta): string {
+  return `${REWATCH_PREFIX}${JSON.stringify(meta)}`;
+}
 
 interface CategoryConfig {
   id: InProgressCategory;
@@ -92,15 +137,17 @@ const CATEGORIES: CategoryConfig[] = [
 function getItemCategory(item: Watchlist): InProgressCategory {
   if (item.status === 'rewatch') return 'rewatch';
   if (item.status === 'completed') {
-    return item.last_timestamp === REWATCH_MARKER ? 'rewatch' : 'completed';
+    return isRewatchTimestamp(item.last_timestamp) ? 'rewatch' : 'completed';
   }
   if (item.status === 'dropped') return 'come_back_later';
   return 'watching';
 }
 
 function getEffectiveTimestamp(item: Watchlist): string | null {
-  if (!item.last_timestamp || item.last_timestamp === REWATCH_MARKER) return null;
-  return item.last_timestamp;
+  if (isRewatchTimestamp(item.last_timestamp)) {
+    return parseRewatchMeta(item.last_timestamp).ts;
+  }
+  return item.last_timestamp || null;
 }
 
 interface DragPreviewState {
@@ -108,8 +155,8 @@ interface DragPreviewState {
   title: string;
   posterPath: string | null;
   isTv: boolean;
-  x: number;
-  y: number;
+  initialX: number;
+  initialY: number;
 }
 
 // ── Page Component ─────────────────────────────────────────────
@@ -122,6 +169,7 @@ export default function InProgressPage() {
   const [dragOverCategory, setDragOverCategory] = useState<InProgressCategory | null>(null);
 
   const draggingItemId = dragPreview?.id ?? null;
+  const dragPreviewElRef = useRef<HTMLDivElement | null>(null);
   const pointerPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const suppressClickRef = useRef(false);
   const pendingCleanupRef = useRef<(() => void) | null>(null);
@@ -148,13 +196,15 @@ export default function InProgressPage() {
     };
   }, []);
 
-  // Enable smooth edge auto-scrolling and mouse-wheel scrolling while dragging a card
+  // Enable smooth edge auto-scrolling and native wheel scrolling while dragging a card
   useEffect(() => {
     if (!draggingItemId) return;
 
     let rafId: number | null = null;
+    let lastTime = performance.now();
+    let scrollCarry = 0;
     const EDGE_THRESHOLD = 140;
-    const MAX_SCROLL_SPEED = 20;
+    const MAX_SCROLL_SPEED = 18;
 
     const prevUserSelect = document.body.style.userSelect;
     const prevCursor = document.body.style.cursor;
@@ -167,43 +217,42 @@ export default function InProgressPage() {
       setDragOverCategory((prev) => (prev === hoveredCat ? prev : hoveredCat));
     };
 
-    const handleWheel = (e: WheelEvent) => {
-      e.preventDefault();
-      const multiplier =
-        e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? window.innerHeight : 1;
-      window.scrollBy({
-        top: e.deltaY * multiplier,
-        left: e.deltaX * multiplier,
-        behavior: 'instant' as ScrollBehavior,
-      });
-      syncDropTarget();
-    };
-
-    const tick = () => {
+    const tick = (now: number) => {
+      const dt = Math.min(32, Math.max(0, now - lastTime)) / 16.667;
+      lastTime = now;
       const { y } = pointerPosRef.current;
       const vh = window.innerHeight;
       let delta = 0;
       if (y > vh - EDGE_THRESHOLD) {
         const ratio = Math.min(1, (y - (vh - EDGE_THRESHOLD)) / EDGE_THRESHOLD);
-        delta = Math.ceil(ratio * MAX_SCROLL_SPEED);
+        const eased = ratio * ratio;
+        delta = eased * MAX_SCROLL_SPEED * dt;
       } else if (y < EDGE_THRESHOLD) {
         const ratio = Math.min(1, (EDGE_THRESHOLD - y) / EDGE_THRESHOLD);
-        delta = -Math.ceil(ratio * MAX_SCROLL_SPEED);
+        const eased = ratio * ratio;
+        delta = -eased * MAX_SCROLL_SPEED * dt;
       }
       if (delta !== 0) {
-        window.scrollBy({ top: delta, behavior: 'instant' as ScrollBehavior });
-        syncDropTarget();
+        scrollCarry += delta;
+        const step = Math.trunc(scrollCarry);
+        if (step !== 0) {
+          scrollCarry -= step;
+          window.scrollBy({ top: step, behavior: 'instant' as ScrollBehavior });
+          syncDropTarget();
+        }
+      } else {
+        scrollCarry = 0;
       }
       rafId = window.requestAnimationFrame(tick);
     };
 
-    window.addEventListener('wheel', handleWheel, { capture: true, passive: false });
+    window.addEventListener('scroll', syncDropTarget, { passive: true });
     rafId = window.requestAnimationFrame(tick);
 
     return () => {
       document.body.style.userSelect = prevUserSelect;
       document.body.style.cursor = prevCursor;
-      window.removeEventListener('wheel', handleWheel, { capture: true });
+      window.removeEventListener('scroll', syncDropTarget);
       if (rafId !== null) window.cancelAnimationFrame(rafId);
     };
   }, [draggingItemId, getDropCategoryAtPoint]);
@@ -241,6 +290,17 @@ export default function InProgressPage() {
     };
   }, [fetchInProgress]);
 
+  const clearRewatchEpisodeProgress = useCallback(async (mediaId: string) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    await supabase
+      .from('episode_progress')
+      .delete()
+      .eq('user_id', user.id)
+      .eq('media_id', mediaId)
+      .lt('season_number', 0);
+  }, [supabase]);
+
   const updateProgress = useCallback(async (
     item: Watchlist,
     season: number,
@@ -248,10 +308,13 @@ export default function InProgressPage() {
     timestamp: string,
     silent = false
   ) => {
-    const nextTimestamp =
-      item.status === 'completed' && item.last_timestamp === REWATCH_MARKER && !timestamp
-        ? REWATCH_MARKER
-        : (timestamp || null);
+    const inRewatch = getItemCategory(item) === 'rewatch';
+    const nextTimestamp = inRewatch
+      ? encodeRewatchMeta({
+          ts: timestamp || null,
+          orig: parseRewatchMeta(item.last_timestamp).orig,
+        })
+      : (timestamp || null);
 
     const { error } = await supabase
       .from('watchlist')
@@ -284,18 +347,42 @@ export default function InProgressPage() {
   const moveItemToCategory = useCallback(async (itemId: string, category: InProgressCategory) => {
     const targetItem = items.find((i) => i.id === itemId);
     if (!targetItem) return;
-    if (getItemCategory(targetItem) === category) return;
+    const prevCategory = getItemCategory(targetItem);
+    if (prevCategory === category) return;
 
     const config = CATEGORIES.find((c) => c.id === category)!;
-    const cleanTimestamp = getEffectiveTimestamp(targetItem);
 
     let appliedStatus: WatchlistStatus = config.dbStatus;
-    let appliedTimestamp: string | null = cleanTimestamp;
+    let nextSeason = targetItem.current_season;
+    let nextEpisode = targetItem.current_episode;
+    let appliedTimestamp: string | null = getEffectiveTimestamp(targetItem);
+
+    if (category === 'rewatch') {
+      await clearRewatchEpisodeProgress(targetItem.media_id);
+      const orig = {
+        s: targetItem.current_season,
+        e: targetItem.current_episode,
+        ts: getEffectiveTimestamp(targetItem),
+      };
+      nextSeason = 1;
+      nextEpisode = 1;
+      appliedTimestamp = encodeRewatchMeta({ ts: null, orig });
+    } else if (prevCategory === 'rewatch') {
+      await clearRewatchEpisodeProgress(targetItem.media_id);
+      const orig = parseRewatchMeta(targetItem.last_timestamp).orig;
+      nextSeason = orig?.s ?? targetItem.current_season;
+      nextEpisode = orig?.e ?? targetItem.current_episode;
+      appliedTimestamp = category === 'completed' ? null : (orig?.ts ?? null);
+    } else if (category === 'completed') {
+      appliedTimestamp = null;
+    }
 
     let { error } = await supabase
       .from('watchlist')
       .update({
         status: appliedStatus,
+        current_season: nextSeason,
+        current_episode: nextEpisode,
         last_timestamp: appliedTimestamp,
       })
       .eq('id', itemId);
@@ -303,11 +390,12 @@ export default function InProgressPage() {
     // Fallback if remote Supabase DB hasn't added 'rewatch' to the status CHECK constraint yet
     if (error && category === 'rewatch' && error.code === '23514') {
       appliedStatus = 'completed';
-      appliedTimestamp = REWATCH_MARKER;
       const retry = await supabase
         .from('watchlist')
         .update({
           status: appliedStatus,
+          current_season: nextSeason,
+          current_episode: nextEpisode,
           last_timestamp: appliedTimestamp,
         })
         .eq('id', itemId);
@@ -322,19 +410,47 @@ export default function InProgressPage() {
     setItems((prev) =>
       prev.map((i) =>
         i.id === itemId
-          ? { ...i, status: appliedStatus, last_timestamp: appliedTimestamp }
+          ? {
+              ...i,
+              status: appliedStatus,
+              current_season: nextSeason,
+              current_episode: nextEpisode,
+              last_timestamp: appliedTimestamp,
+            }
           : i
       )
     );
     window.dispatchEvent(new CustomEvent('couchlog:watchlist-updated'));
     toast({ title: `Moved to ${config.label}`, description: targetItem.media?.title });
-  }, [items, supabase, toast]);
+  }, [items, supabase, toast, clearRewatchEpisodeProgress]);
 
   const moveItemToWatchlist = useCallback(async (itemId: string) => {
     const targetItem = items.find((i) => i.id === itemId);
+    const wasRewatch = targetItem ? getItemCategory(targetItem) === 'rewatch' : false;
+
+    let restoreFields: {
+      current_season?: number;
+      current_episode?: number;
+      last_timestamp: string | null;
+    };
+
+    if (targetItem && wasRewatch) {
+      await clearRewatchEpisodeProgress(targetItem.media_id);
+      const orig = parseRewatchMeta(targetItem.last_timestamp).orig;
+      restoreFields = {
+        current_season: orig?.s ?? targetItem.current_season,
+        current_episode: orig?.e ?? targetItem.current_episode,
+        last_timestamp: orig?.ts ?? null,
+      };
+    } else {
+      restoreFields = {
+        last_timestamp: targetItem ? getEffectiveTimestamp(targetItem) : null,
+      };
+    }
+
     const { error } = await supabase
       .from('watchlist')
-      .update({ status: 'to_watch', last_timestamp: getEffectiveTimestamp(targetItem ?? ({} as Watchlist)) })
+      .update({ status: 'to_watch', ...restoreFields })
       .eq('id', itemId);
 
     if (error) {
@@ -345,7 +461,7 @@ export default function InProgressPage() {
     setItems((prev) => prev.filter((i) => i.id !== itemId));
     window.dispatchEvent(new CustomEvent('couchlog:watchlist-updated'));
     toast({ title: 'Moved to Watchlist', description: targetItem?.media?.title });
-  }, [items, supabase, toast]);
+  }, [items, supabase, toast, clearRewatchEpisodeProgress]);
 
   const removeItem = useCallback(async (itemId: string) => {
     const targetItem = items.find((i) => i.id === itemId);
@@ -426,11 +542,17 @@ export default function InProgressPage() {
 
     pointerPosRef.current = { x: startX, y: startY };
 
+    let hoverRafId: number | null = null;
+
     const cleanup = () => {
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
       window.removeEventListener('pointercancel', onPointerCancel);
       window.removeEventListener('keydown', onKeyDown);
+      if (hoverRafId !== null) {
+        window.cancelAnimationFrame(hoverRafId);
+        hoverRafId = null;
+      }
       if (pendingCleanupRef.current === cleanup) {
         pendingCleanupRef.current = null;
       }
@@ -469,20 +591,30 @@ export default function InProgressPage() {
         activated = true;
         suppressClickRef.current = true;
         window.getSelection()?.removeAllRanges();
+        setDragPreview({
+          id: item.id,
+          title: item.media?.title ?? 'Untitled',
+          posterPath: item.media?.poster_path ?? null,
+          isTv: item.media?.media_type === 'tv',
+          initialX: moveEvent.clientX,
+          initialY: moveEvent.clientY,
+        });
       }
 
       pointerPosRef.current = { x: moveEvent.clientX, y: moveEvent.clientY };
-      const hoveredCat = getDropCategoryAtPoint(moveEvent.clientX, moveEvent.clientY);
 
-      setDragPreview({
-        id: item.id,
-        title: item.media?.title ?? 'Untitled',
-        posterPath: item.media?.poster_path ?? null,
-        isTv: item.media?.media_type === 'tv',
-        x: moveEvent.clientX,
-        y: moveEvent.clientY,
-      });
-      setDragOverCategory((prev) => (prev === hoveredCat ? prev : hoveredCat));
+      if (dragPreviewElRef.current) {
+        dragPreviewElRef.current.style.transform = `translate3d(${moveEvent.clientX + 14}px, ${moveEvent.clientY + 14}px, 0)`;
+      }
+
+      if (hoverRafId === null) {
+        hoverRafId = window.requestAnimationFrame(() => {
+          hoverRafId = null;
+          const { x, y } = pointerPosRef.current;
+          const hoveredCat = getDropCategoryAtPoint(x, y);
+          setDragOverCategory((prev) => (prev === hoveredCat ? prev : hoveredCat));
+        });
+      }
     };
 
     const onPointerUp = (upEvent: PointerEvent) => {
@@ -678,12 +810,14 @@ export default function InProgressPage() {
 
       {dragPreview && (
         <div
+          ref={dragPreviewElRef}
           className="card pointer-events-none flex items-center gap-3 p-2.5 shadow-2xl"
           style={{
             position: 'fixed',
-            left: dragPreview.x,
-            top: dragPreview.y,
-            transform: 'translate3d(14px, 14px, 0)',
+            left: 0,
+            top: 0,
+            transform: `translate3d(${dragPreview.initialX + 14}px, ${dragPreview.initialY + 14}px, 0)`,
+            willChange: 'transform',
             width: 248,
             zIndex: 9999,
             background: 'hsl(var(--color-surface) / 0.96)',
@@ -771,16 +905,30 @@ function InProgressCard({
   const isTv = media.media_type === 'tv';
 
   const [showData, setShowData] = useState<TmdbTvDetails | null>(null);
-  const [progress, setProgress] = useState<Record<string, EpisodeProgress>>({});
+  const [originalProgress, setOriginalProgress] = useState<Record<string, EpisodeProgress>>({});
+  const [rewatchProgress, setRewatchProgress] = useState<Record<string, EpisodeProgress>>({});
   const [episodeData, setEpisodeData] = useState<Record<number, TmdbEpisode[]>>({});
   const [loadingSeason, setLoadingSeason] = useState<number | null>(null);
   const [loadingTv, setLoadingTv] = useState(isTv);
   const [isUpdating, setIsUpdating] = useState(false);
   const fetchedSeasonsRef = useRef<Set<number>>(new Set());
 
+  const isRewatch = category === 'rewatch';
+  const toDbSeason = (s: number) => (isRewatch ? -Math.abs(s) : Math.abs(s));
+  const progress = isRewatch ? rewatchProgress : originalProgress;
+  const setProgress = isRewatch ? setRewatchProgress : setOriginalProgress;
+  const prevIsRewatchRef = useRef(isRewatch);
+
   const supabase = createClient();
   const { toast } = useToast();
   const effectiveTimestamp = getEffectiveTimestamp(item);
+
+  useEffect(() => {
+    if (prevIsRewatchRef.current !== isRewatch) {
+      prevIsRewatchRef.current = isRewatch;
+      queueMicrotask(() => setRewatchProgress({}));
+    }
+  }, [isRewatch]);
 
   useEffect(() => {
     if (!showMenu) return;
@@ -824,7 +972,8 @@ function InProgressCard({
         if (!mounted) return;
         setShowData(show);
 
-        const map: Record<string, EpisodeProgress> = {};
+        const origMap: Record<string, EpisodeProgress> = {};
+        const rwMap: Record<string, EpisodeProgress> = {};
         if (user) {
           const { data } = await supabase
             .from('episode_progress')
@@ -832,9 +981,20 @@ function InProgressCard({
             .eq('user_id', user.id)
             .eq('media_id', media.id);
           data?.forEach((ep) => {
-            map[`${ep.season_number}-${ep.episode_number}`] = ep;
+            if (ep.season_number < 0) {
+              const posSeason = Math.abs(ep.season_number);
+              rwMap[`${posSeason}-${ep.episode_number}`] = {
+                ...ep,
+                season_number: posSeason,
+              };
+            } else if (ep.season_number > 0) {
+              origMap[`${ep.season_number}-${ep.episode_number}`] = ep;
+            }
           });
-          if (mounted) setProgress(map);
+          if (mounted) {
+            setOriginalProgress(origMap);
+            setRewatchProgress(rwMap);
+          }
         }
 
         // Prefetch current season + latest season(s) so episode names and future air dates are immediately known
@@ -1043,7 +1203,7 @@ function InProgressCard({
           .upsert({
             user_id: user.id,
             media_id: media.id,
-            season_number: currentSeason,
+            season_number: toDbSeason(currentSeason),
             episode_number: currentEp,
             watched: true,
             watched_at: new Date().toISOString(),
@@ -1057,7 +1217,10 @@ function InProgressCard({
           return;
         }
 
-        setProgress((prev) => ({ ...prev, [key]: epData }));
+        setProgress((prev) => ({
+          ...prev,
+          [key]: { ...epData, season_number: currentSeason },
+        }));
       } catch (err) {
         console.error(err);
       } finally {
@@ -1075,14 +1238,16 @@ function InProgressCard({
 
   async function handleTimestampModalSave(ts: string, targetSeason?: number, targetEpisode?: number) {
     if (!isTv) {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        await supabase.from('movie_progress').upsert({
-          user_id: user.id,
-          media_id: media.id,
-          watched: category === 'completed',
-          stopped_at_timestamp: ts || null,
-        }, { onConflict: 'user_id,media_id' });
+      if (!isRewatch) {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          await supabase.from('movie_progress').upsert({
+            user_id: user.id,
+            media_id: media.id,
+            watched: category === 'completed',
+            stopped_at_timestamp: ts || null,
+          }, { onConflict: 'user_id,media_id' });
+        }
       }
       await onProgressUpdate(item, 1, 1, ts);
       setShowTimestampModal(false);
@@ -1106,13 +1271,15 @@ function InProgressCard({
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    // Clear stopped_at_timestamp on any other paused episodes so this episode becomes the active one
-    await supabase
+    // Clear stopped_at_timestamp on any other paused episodes in current watch mode so this episode becomes active
+    const clearStoppedQuery = supabase
       .from('episode_progress')
       .update({ stopped_at_timestamp: null })
       .eq('user_id', user.id)
       .eq('media_id', media.id)
       .not('stopped_at_timestamp', 'is', null);
+
+    await (isRewatch ? clearStoppedQuery.lt('season_number', 0) : clearStoppedQuery.gt('season_number', 0));
 
     // If user jumped to a specific episode, ensure earlier aired episodes in loaded seasons are marked watched
     // so the sync effect selects (s, e) as the active episode even if ts is empty
@@ -1137,7 +1304,7 @@ function InProgressCard({
         episodesToMarkWatched.map((ep) => ({
           user_id: user.id,
           media_id: media.id,
-          season_number: ep.season_number,
+          season_number: toDbSeason(ep.season_number),
           episode_number: ep.episode_number,
           watched: true,
           watched_at: nowIso,
@@ -1153,7 +1320,7 @@ function InProgressCard({
       .upsert({
         user_id: user.id,
         media_id: media.id,
-        season_number: s,
+        season_number: toDbSeason(s),
         episode_number: e,
         watched: false,
         watched_at: null,
@@ -1167,19 +1334,24 @@ function InProgressCard({
       return;
     }
 
-    // Reload episode_progress map cleanly
-    const { data: refreshed } = await supabase
+    // Reload episode_progress map cleanly for current watch mode
+    const refreshQuery = supabase
       .from('episode_progress')
       .select('*')
       .eq('user_id', user.id)
       .eq('media_id', media.id);
 
+    const { data: refreshed } = await (isRewatch
+      ? refreshQuery.lt('season_number', 0)
+      : refreshQuery.gt('season_number', 0));
+
     const nextMap: Record<string, EpisodeProgress> = {};
     refreshed?.forEach((ep) => {
-      nextMap[`${ep.season_number}-${ep.episode_number}`] = ep;
+      const posSeason = Math.abs(ep.season_number);
+      nextMap[`${posSeason}-${ep.episode_number}`] = { ...ep, season_number: posSeason };
     });
     if (targetRow) {
-      nextMap[`${s}-${e}`] = targetRow;
+      nextMap[`${s}-${e}`] = { ...targetRow, season_number: s };
     }
     setProgress(nextMap);
 
@@ -1534,6 +1706,7 @@ function InProgressCard({
           <div className="collapsible-inner">
             <EpisodeList
               mediaId={media.id}
+              isRewatch={isRewatch}
               showData={showData}
               progress={progress}
               setProgress={setProgress}
@@ -1565,6 +1738,7 @@ function InProgressCard({
 // ── EpisodeList ────────────────────────────────────────────────
 function EpisodeList({
   mediaId,
+  isRewatch,
   showData,
   progress,
   setProgress,
@@ -1573,6 +1747,7 @@ function EpisodeList({
   loadSeasonEpisodes,
 }: {
   mediaId: string;
+  isRewatch: boolean;
   showData: TmdbTvDetails;
   progress: Record<string, EpisodeProgress>;
   setProgress: React.Dispatch<React.SetStateAction<Record<string, EpisodeProgress>>>;
@@ -1599,12 +1774,13 @@ function EpisodeList({
     const key = `${seasonNum}-${ep.episode_number}`;
     const existing = progress[key];
     const newWatched = !existing?.watched;
+    const dbSeason = isRewatch ? -Math.abs(seasonNum) : Math.abs(seasonNum);
     const { data, error } = await supabase
       .from('episode_progress')
       .upsert({
         user_id: user.id,
         media_id: mediaId,
-        season_number: seasonNum,
+        season_number: dbSeason,
         episode_number: ep.episode_number,
         watched: newWatched,
         watched_at: newWatched ? new Date().toISOString() : null,
@@ -1618,7 +1794,10 @@ function EpisodeList({
       return;
     }
     if (data) {
-      setProgress((prev) => ({ ...prev, [key]: data }));
+      setProgress((prev) => ({
+        ...prev,
+        [key]: { ...data, season_number: seasonNum },
+      }));
     }
   }
 
@@ -1705,6 +1884,7 @@ function EpisodeList({
                       key={ep.episode_number}
                       episode={ep}
                       seasonNum={season.season_number}
+                      isRewatch={isRewatch}
                       mediaId={mediaId}
                       progress={progress[`${season.season_number}-${ep.episode_number}`]}
                       onToggle={() => toggleEpisode(season.season_number, ep)}
@@ -1728,6 +1908,7 @@ function EpisodeList({
 function EpisodeRow({
   episode,
   seasonNum,
+  isRewatch,
   mediaId,
   progress,
   onToggle,
@@ -1735,6 +1916,7 @@ function EpisodeRow({
 }: {
   episode: TmdbEpisode;
   seasonNum: number;
+  isRewatch: boolean;
   mediaId: string;
   progress: EpisodeProgress | undefined;
   onToggle: () => void;
@@ -1874,19 +2056,20 @@ function EpisodeRow({
           onSave={async (ts) => {
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) return;
+            const dbSeason = isRewatch ? -Math.abs(seasonNum) : Math.abs(seasonNum);
             const { data } = await supabase
               .from('episode_progress')
               .upsert({
                 user_id: user.id,
                 media_id: mediaId,
-                season_number: seasonNum,
+                season_number: dbSeason,
                 episode_number: episode.episode_number,
                 watched: progress?.watched ?? false,
                 stopped_at_timestamp: ts || null,
               }, { onConflict: 'user_id,media_id,season_number,episode_number' })
               .select()
               .single();
-            if (data) onProgressUpdate(data);
+            if (data) onProgressUpdate({ ...data, season_number: seasonNum });
             setShowTimestamp(false);
           }}
         />
